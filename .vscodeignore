@@ -1,0 +1,17 @@
+# Sources and dev tooling — the runtime is the esbuild bundle in out/
+.kiro/**
+.ai_docs/**
+src/**
+test/**
+node_modules/**
+.vscode/**
+**/*.ts
+**/*.map
+*.log
+npm-install.log
+tsconfig.json
+vitest.config.ts
+esbuild.mjs
+.gitignore
+.vscodeignore
+CLAUDE.md

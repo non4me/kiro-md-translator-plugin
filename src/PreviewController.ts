@@ -1,0 +1,458 @@
+import * as vscode from 'vscode'
+import {
+  type ExtensionMessage,
+  type IExportService,
+  type IPreviewController,
+  type ISettingsManager,
+  type ITranslationCache,
+  type LineMapping,
+  type PluginError,
+  type RenderResult,
+  type WebviewMessage,
+} from './types'
+import { MarkdownRenderer } from './MarkdownRenderer'
+import { TranslationEngine } from './TranslationEngine'
+import { t } from './l10n'
+
+const RENDER_DEBOUNCE_MS = 300
+const TRANSLATE_DEBOUNCE_MS = 1000
+const MEMORY_CHECK_INTERVAL_MS = 10_000
+const LARGE_FILE_BYTES = 1024 * 1024 // 1 MB
+const MEMORY_WARN_BYTES = 150 * 1024 * 1024 // 150 MB (req 5.6, margin above the 100 MB budget)
+
+export interface PreviewDeps {
+  post: (message: ExtensionMessage) => void
+  renderer: MarkdownRenderer
+  engine: TranslationEngine
+  cache: ITranslationCache
+  settings: ISettingsManager
+  exportService: IExportService
+  getDocumentText: () => string
+  getDocumentUri: () => vscode.Uri
+  /** Persist edited source back to the document (used by saveParagraph, req 7.14). */
+  applyEdit?: (newText: string) => Promise<void>
+  /** Run a VS Code command (Edit_Mode opens the source editor via `vscode.openWith`). */
+  executeCommand?: (command: string, ...args: unknown[]) => Thenable<unknown>
+  /** Plugin-owned memory size in bytes (injected for the monitor, req 5.1/5.6). */
+  ownedMemoryBytes?: () => number
+  /** Resolves once the API key has finished loading from the keychain; the
+   *  at-open auto-translate awaits it so it never builds a provider with an
+   *  unloaded (empty) key on cold start. */
+  whenReady?: () => Promise<void>
+}
+
+type State =
+  | 'IDLE'
+  | 'RENDERING'
+  | 'RENDERED'
+  | 'TRANSLATING'
+  | 'TRANSLATED'
+  | 'RENDER_ERROR'
+  | 'TRANSLATION_ERROR'
+
+/**
+ * Per-document coordinator between the Kiro host, the renderer and the engine.
+ * Owns the render/translate debounce timers and a single per-document
+ * AbortController. The preview shows the translated render once translation is
+ * active; scroll sync is element-level via the source lineMap.
+ */
+export class PreviewController implements IPreviewController {
+  private state: State = 'IDLE'
+  private sourceText = ''
+  private lineMap: LineMapping[] = []
+  private displayingTranslation = false
+  private editMode = false
+  private lastHtmlBytes = 0
+  private lastTarget: string | undefined
+  private lastStorage = ''
+  private lastMode = ''
+  private lastProvider = ''
+  private lastEndpoint: string | undefined
+
+  private renderTimer: ReturnType<typeof setTimeout> | undefined
+  private translateTimer: ReturnType<typeof setTimeout> | undefined
+  private memoryTimer: ReturnType<typeof setInterval> | undefined
+  private abortController: AbortController | undefined
+  private renderToken: vscode.CancellationTokenSource | undefined
+
+  constructor(private readonly deps: PreviewDeps) {
+    this.sourceText = deps.getDocumentText()
+    const cfg = deps.settings.getConfig()
+    this.lastTarget = cfg.targetLanguage
+    this.lastStorage = cfg.storageLanguage
+    this.lastMode = cfg.translationMode
+    this.lastProvider = cfg.providerType
+    this.lastEndpoint = cfg.customEndpoint
+  }
+
+  // --- lifecycle ---------------------------------------------------------
+
+  start(): void {
+    this.scheduleRender()
+    this.updateButtonState()
+    const cfg = this.deps.settings.getConfig()
+    if (cfg.translationMode === 'automatic' && cfg.targetLanguage) {
+      // req 3.5: translate immediately on file open — but wait for the API key to
+      // finish loading first, or the first translation goes out with an empty key.
+      const ready = this.deps.whenReady?.() ?? Promise.resolve()
+      void ready.then(() => this.translateNow())
+    }
+    this.memoryTimer = setInterval(() => this.checkMemory(), MEMORY_CHECK_INTERVAL_MS)
+  }
+
+  onDocumentChange(document: vscode.TextDocument): void {
+    this.sourceText = document.getText()
+    this.scheduleRender()
+    const cfg = this.deps.settings.getConfig()
+    if (cfg.translationMode === 'automatic' && cfg.targetLanguage) {
+      this.scheduleTranslate()
+    } else if (this.editMode && this.displayingTranslation && cfg.targetLanguage) {
+      // Edit_Mode with a translated preview re-translates edited paragraphs (req 2.6).
+      this.scheduleTranslate()
+    } else if (this.displayingTranslation) {
+      // On-demand edit with no re-translate coming: the shown translation is now
+      // stale → let the upcoming render fall back to source instead of keeping it.
+      this.displayingTranslation = false
+    }
+  }
+
+  dispose(): void {
+    if (this.renderTimer) clearTimeout(this.renderTimer)
+    if (this.translateTimer) clearTimeout(this.translateTimer)
+    if (this.memoryTimer) clearInterval(this.memoryTimer)
+    this.abortController?.abort()
+    this.renderToken?.cancel()
+    this.renderToken?.dispose()
+  }
+
+  // --- rendering ---------------------------------------------------------
+
+  private scheduleRender(): void {
+    if (this.renderTimer) clearTimeout(this.renderTimer)
+    this.renderToken?.cancel()
+    this.renderTimer = setTimeout(() => void this.renderNow(), RENDER_DEBOUNCE_MS)
+  }
+
+  async renderNow(): Promise<void> {
+    if (new TextEncoder().encode(this.sourceText).length > LARGE_FILE_BYTES) {
+      this.deps.post({ type: 'memoryWarning', level: 'large-file' })
+    }
+    this.state = 'RENDERING'
+    this.renderToken = new vscode.CancellationTokenSource()
+    try {
+      const result = await this.deps.renderer.render(this.sourceText, this.fileDir())
+      this.applyRenderResult(result)
+      this.state = 'RENDERED'
+      // Keep a still-valid translation on screen while its refresh is in flight
+      // (req 2.6/3.11). Callers clear displayingTranslation when the shown
+      // translation is stale with no re-translate coming, so we fall back to source.
+      const display = !this.displayingTranslation
+      this.deps.post({ type: 'renderContent', html: result.html, lineMap: result.lineMap, display })
+    } catch (err) {
+      this.state = 'RENDER_ERROR'
+      this.deps.post({ type: 'translationError', code: 0, message: t('Failed to load the preview') })
+    }
+  }
+
+  private applyRenderResult(result: RenderResult): void {
+    this.lineMap = result.lineMap
+    this.lastHtmlBytes = result.html.length * 2
+  }
+
+  // --- translation -------------------------------------------------------
+
+  private scheduleTranslate(): void {
+    if (this.translateTimer) clearTimeout(this.translateTimer)
+    this.translateTimer = setTimeout(() => void this.translateNow(), TRANSLATE_DEBOUNCE_MS)
+  }
+
+  async translateNow(): Promise<void> {
+    const cfg = this.deps.settings.getConfig()
+    if (!cfg.targetLanguage) return
+    this.state = 'TRANSLATING'
+    this.deps.post({ type: 'translationStart' })
+    this.abortController?.abort()
+    this.abortController = new AbortController()
+    try {
+      const result = await this.deps.engine.translate(
+        this.sourceText,
+        cfg.storageLanguage,
+        cfg.targetLanguage,
+        this.abortController.signal,
+        this.fileDir(),
+      )
+      this.displayingTranslation = true
+      this.lastHtmlBytes = result.html.length * 2
+      this.state = 'TRANSLATED'
+      this.deps.post({ type: 'translationComplete', translatedHtml: result.html })
+    } catch (err) {
+      this.state = 'TRANSLATION_ERROR'
+      const e = err as PluginError
+      // HTTP error (req 3.13): notify with code + message, keep previous content.
+      // Empty/null responses never throw (engine keeps the source per req 3.14),
+      // so reaching here implies a real error worth surfacing.
+      this.deps.post({ type: 'translationError', code: e.httpStatus ?? 0, message: e.message })
+    }
+  }
+
+  // --- webview messages --------------------------------------------------
+
+  onWebviewMessage(message: WebviewMessage): void {
+    switch (message.type) {
+      case 'translateRequest':
+        void this.translateNow()
+        break
+      case 'dblclick':
+        this.enterEditMode()
+        break
+      case 'paragraphHover':
+        void this.handleHover(message.paragraphIndex)
+        break
+      case 'paragraphHoverEnd':
+        this.deps.post({ type: 'hideTooltip' })
+        break
+      case 'displayModeChanged':
+        // The webview toggled Translate<->Original locally (cached HTML, no API);
+        // keep the host's hover direction (req 7.3/7.4) in sync.
+        this.displayingTranslation = message.displaying === 'translation'
+        break
+      case 'scrollChanged':
+        this.handlePreviewScroll(message.topParagraphIndex)
+        break
+      case 'editParagraph':
+        void this.handleEditParagraph(message.paragraphIndex)
+        break
+      case 'saveParagraph':
+        void this.handleSaveParagraph(message.paragraphIndex, message.storageText)
+        break
+      case 'modalSyncRequest':
+        void this.handleModalSync(message.field, message.text)
+        break
+      case 'saveTranslation':
+        void this.handleExport()
+        break
+      case 'cancelParagraphEdit':
+      case 'ready':
+        break
+    }
+  }
+
+  /** Hover reverse translation (reqs 7.3/7.4). */
+  async handleHover(paragraphIndex: number): Promise<void> {
+    const paraText = this.paragraphText(paragraphIndex)
+    if (paraText === undefined) return
+
+    if (this.displayingTranslation) {
+      // Preview shows the translation → reverse is the KNOWN source; no API (req 7.3).
+      this.deps.post({ type: 'showTooltip', paragraphIndex, reverseTranslation: paraText })
+      return
+    }
+
+    // Preview shows the source → reverse = Storage → Target (req 7.4).
+    const cfg = this.deps.settings.getConfig()
+    if (!cfg.targetLanguage) return
+    const cached = this.deps.cache.get(paraText, cfg.targetLanguage)
+    if (cached !== undefined) {
+      this.deps.post({ type: 'showTooltip', paragraphIndex, reverseTranslation: cached })
+      return
+    }
+    this.deps.post({ type: 'tooltipLoading', paragraphIndex })
+    try {
+      const ac = new AbortController()
+      const res = await this.deps.engine.translateParagraph(
+        paraText,
+        cfg.storageLanguage,
+        cfg.targetLanguage,
+        ac.signal,
+      )
+      this.deps.cache.set(paraText, cfg.targetLanguage, res)
+      this.deps.post({ type: 'showTooltip', paragraphIndex, reverseTranslation: res })
+    } catch {
+      this.deps.post({ type: 'tooltipError', paragraphIndex, message: t('Failed to load the translation') })
+    }
+  }
+
+  /** Modal bidirectional auto-sync (reqs 7.9–7.11). */
+  async handleModalSync(field: 'storage' | 'target', text: string): Promise<void> {
+    const cfg = this.deps.settings.getConfig()
+    if (!cfg.targetLanguage) return
+    const from = field === 'storage' ? cfg.storageLanguage : cfg.targetLanguage
+    const to = field === 'storage' ? cfg.targetLanguage : cfg.storageLanguage
+    const other: 'storage' | 'target' = field === 'storage' ? 'target' : 'storage'
+    this.deps.post({ type: 'editModalSyncStart', field: other })
+    try {
+      const ac = new AbortController()
+      const res = await this.deps.engine.translateParagraph(text, from, to, ac.signal)
+      this.deps.post({ type: 'editModalSyncComplete', field: other, text: res })
+    } catch {
+      this.deps.post({ type: 'editModalSyncError', field: other, message: t('Failed to load the translation') })
+    }
+  }
+
+  private async handleEditParagraph(paragraphIndex: number): Promise<void> {
+    const storageText = this.paragraphText(paragraphIndex) ?? ''
+    const cfg = this.deps.settings.getConfig()
+    const cached = cfg.targetLanguage
+      ? this.deps.cache.get(storageText, cfg.targetLanguage)
+      : undefined
+    // Open the modal right away. The full-document translate caches per text-node
+    // SEGMENT (code/inline-code excluded), not per whole paragraph, so a paragraph
+    // with any inline markup is never a single-key hit — on a miss, translate the
+    // paragraph (as hover does) and fill the Target field instead of leaving it blank (req 7.9).
+    this.deps.post({ type: 'openEditModal', paragraphIndex, storageText, targetText: cached ?? '' })
+    if (cached !== undefined || !cfg.targetLanguage || !storageText) return
+    this.deps.post({ type: 'editModalSyncStart', field: 'target' })
+    try {
+      const ac = new AbortController()
+      const res = await this.deps.engine.translateParagraph(
+        storageText,
+        cfg.storageLanguage,
+        cfg.targetLanguage,
+        ac.signal,
+      )
+      this.deps.cache.set(storageText, cfg.targetLanguage, res)
+      this.deps.post({ type: 'editModalSyncComplete', field: 'target', text: res })
+    } catch {
+      this.deps.post({ type: 'editModalSyncError', field: 'target', message: t('Failed to load the translation') })
+    }
+  }
+
+  private async handleSaveParagraph(paragraphIndex: number, storageText: string): Promise<void> {
+    const newSource = this.deps.engine.replaceParagraphInSource(
+      this.sourceText,
+      this.lineMap,
+      paragraphIndex,
+      storageText,
+    )
+    this.sourceText = newSource
+    if (this.deps.applyEdit) await this.deps.applyEdit(newSource)
+    this.scheduleRender()
+  }
+
+  private async handleExport(): Promise<void> {
+    const cfg = this.deps.settings.getConfig()
+    if (!cfg.targetLanguage) return
+    const ac = new AbortController()
+    const md = await this.deps.engine.translateToMarkdown(
+      this.sourceText,
+      cfg.storageLanguage,
+      cfg.targetLanguage,
+      ac.signal,
+    )
+    await this.deps.exportService.exportTranslation(md, this.deps.getDocumentUri(), cfg.targetLanguage)
+  }
+
+  private enterEditMode(): void {
+    this.editMode = true
+    void this.deps.executeCommand?.('vscode.openWith', this.deps.getDocumentUri(), 'default', vscode.ViewColumn.One)
+  }
+
+  // --- scroll sync (element-level via lineMap) ---------------------------
+
+  /** Editor first visible line → paragraphIndex → scroll that element into view. */
+  editorLineToParagraphIndex(line: number): number | undefined {
+    const hit = this.lineMap.find((m) => line >= m.startLine && line <= m.endLine)
+    return hit ? hit.paragraphIndex : this.lineMap[this.lineMap.length - 1]?.paragraphIndex
+  }
+
+  onEditorScroll(firstVisibleLine: number): void {
+    const index = this.editorLineToParagraphIndex(firstVisibleLine)
+    if (index !== undefined) this.deps.post({ type: 'editorScrollSync', paragraphIndex: index })
+  }
+
+  /** Preview top element → source line → reveal in editor (handled by host wiring). */
+  private handlePreviewScroll(topParagraphIndex: number): void {
+    // The reveal itself is performed by the activation-layer editor wiring; here we
+    // only resolve the target line so the controller stays editor-agnostic.
+    void this.paragraphStartLine(topParagraphIndex)
+  }
+
+  paragraphStartLine(paragraphIndex: number): number | undefined {
+    return this.lineMap.find((m) => m.paragraphIndex === paragraphIndex)?.startLine
+  }
+
+  // --- button + memory ---------------------------------------------------
+
+  updateButtonState(): void {
+    const cfg = this.deps.settings.getConfig()
+    const translateEnabled = cfg.translationMode === 'on-demand' && cfg.targetLanguage !== undefined
+    this.deps.post({
+      type: 'updateButtonState',
+      translateEnabled,
+      mode: cfg.translationMode,
+      storageLang: cfg.storageLanguage,
+      targetLang: cfg.targetLanguage,
+    })
+  }
+
+  /**
+   * A settings change refreshes the button and, when the translation LANGUAGES
+   * changed, drops the now-stale rendering: automatic mode re-translates into the
+   * new language; on-demand falls back to the source so the user re-translates.
+   * Without this the preview keeps showing the previous-language translation.
+   */
+  onSettingsChanged(): void {
+    const cfg = this.deps.settings.getConfig()
+    const langChanged =
+      cfg.targetLanguage !== this.lastTarget || cfg.storageLanguage !== this.lastStorage
+    // customEndpoint only affects the 'custom' provider; comparing it while deepl/google
+    // is active would needlessly clear the cache + force a re-translate (req: no spurious calls).
+    const providerChanged =
+      cfg.providerType !== this.lastProvider ||
+      (cfg.providerType === 'custom' && cfg.customEndpoint !== this.lastEndpoint)
+    const modeChanged = cfg.translationMode !== this.lastMode
+    // Cached translations key on [text, targetLang]; a storage-language or provider
+    // change makes same-key entries wrong, so the cache must be dropped (a target
+    // change alone is safe — it uses a different key).
+    const cacheStale = cfg.storageLanguage !== this.lastStorage || providerChanged
+    const inputsChanged = langChanged || providerChanged
+    this.lastTarget = cfg.targetLanguage
+    this.lastStorage = cfg.storageLanguage
+    this.lastProvider = cfg.providerType
+    this.lastEndpoint = cfg.customEndpoint
+    this.lastMode = cfg.translationMode
+    this.updateButtonState()
+    if (cacheStale) this.deps.cache.clear()
+    if (cfg.translationMode === 'automatic' && cfg.targetLanguage) {
+      // Automatic mode must always show the CURRENT translation: (re)translate on
+      // an input change or when we've just switched into automatic (its button is
+      // disabled, so the user cannot trigger it manually).
+      if (inputsChanged || modeChanged) this.scheduleTranslate()
+    } else if (inputsChanged && this.displayingTranslation) {
+      // On-demand with a now-stale translation on screen → fall back to source.
+      this.displayingTranslation = false
+      this.scheduleRender()
+    }
+  }
+
+  /** Plugin-owned-memory check (reqs 5.1/5.6). */
+  checkMemory(): void {
+    const bytes = this.deps.ownedMemoryBytes ? this.deps.ownedMemoryBytes() : this.lastHtmlBytes
+    if (bytes > MEMORY_WARN_BYTES) {
+      this.deps.post({ type: 'memoryWarning', level: 'high-memory' })
+    }
+  }
+
+  // --- helpers -----------------------------------------------------------
+
+  private paragraphText(paragraphIndex: number): string | undefined {
+    const mapping = this.lineMap.find((m) => m.paragraphIndex === paragraphIndex)
+    if (!mapping) return undefined
+    return this.sourceText
+      .split('\n')
+      .slice(mapping.startLine, mapping.endLine + 1)
+      .join('\n')
+      .trim()
+  }
+
+  private fileDir(): vscode.Uri {
+    return vscode.Uri.joinPath(this.deps.getDocumentUri(), '..')
+  }
+
+  /** @internal test seam: prime render state without driving the full pipeline. */
+  primeRenderState(sourceText: string, lineMap: LineMapping[], displayingTranslation: boolean): void {
+    this.sourceText = sourceText
+    this.lineMap = lineMap
+    this.displayingTranslation = displayingTranslation
+  }
+}

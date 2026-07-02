@@ -1,0 +1,129 @@
+{
+  "name": "kiro-md-translator-plugin",
+  "displayName": "Read Markdown Translator",
+  "description": "Rendered Markdown preview with synchronous translation for the Kiro IDE.",
+  "version": "0.2.4",
+  "icon": "media/icon.png",
+  "publisher": "VladimirTroyanenko",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/non4me/kiro-md-translator-plugin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/non4me/kiro-md-translator-plugin/issues"
+  },
+  "homepage": "https://github.com/non4me/kiro-md-translator-plugin#readme",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "main": "./out/extension.js",
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "kiro-md-translator.preview",
+        "displayName": "Markdown Translator Preview",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          }
+        ],
+        "priority": "default"
+      }
+    ],
+    "commands": [
+      {
+        "command": "kiro-md-translator.saveTranslation",
+        "title": "Save Translation"
+      },
+      {
+        "command": "kiro-md-translator.openSettings",
+        "title": "Markdown Translator: Settings"
+      },
+      {
+        "command": "kiro-md-translator.setApiKey",
+        "title": "Markdown Translator: Set API Key"
+      },
+      {
+        "command": "kiro-md-translator.testConnection",
+        "title": "Markdown Translator: Test Connection"
+      }
+    ],
+    "configuration": {
+      "title": "Read Markdown Translator",
+      "properties": {
+        "kiro-md-translator.providerType": {
+          "type": "string",
+          "enum": ["deepl", "google", "custom"],
+          "enumDescriptions": [
+            "DeepL API (Free or Pro).",
+            "Google Cloud Translation API.",
+            "Custom HTTP endpoint (set Custom Endpoint below)."
+          ],
+          "default": "deepl",
+          "markdownDescription": "Translation provider.\n\n**API keys** — stored in the OS keychain, never in `settings.json`:\n\n- DeepL — [Set key](command:kiro-md-translator.setApiKey?%5B%22deepl%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22deepl%22%5D)\n- Google — [Set key](command:kiro-md-translator.setApiKey?%5B%22google%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22google%22%5D)\n- Custom — [Set key](command:kiro-md-translator.setApiKey?%5B%22custom%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22custom%22%5D)"
+        },
+        "kiro-md-translator.customEndpoint": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Base URL for the **Custom** HTTP provider. Ignored unless Provider Type is `custom`."
+        },
+        "kiro-md-translator.storageLanguage": {
+          "type": "string",
+          "default": "en",
+          "markdownDescription": "Language the file is stored in on disk (the translation source). Use a **base** language code, e.g. `en`, `de`, `ru` — regional variants like `en-US` are not valid as a source."
+        },
+        "kiro-md-translator.targetLanguage": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Language to display translations in. Leave empty to disable translation. Regional codes are allowed here, e.g. `en-US`, `pt-BR`."
+        },
+        "kiro-md-translator.translationMode": {
+          "type": "string",
+          "enum": ["on-demand", "automatic"],
+          "enumDescriptions": [
+            "Translate only when you click the Translate button.",
+            "Translate automatically on open and on every edit."
+          ],
+          "default": "on-demand"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run build",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build": "node esbuild.mjs",
+    "package": "npx --yes @vscode/vsce package --no-dependencies --allow-missing-repository",
+    "publish:vsce": "npx --yes @vscode/vsce publish --no-dependencies --allow-missing-repository",
+    "publish:ovsx": "npx --yes ovsx publish --no-dependencies"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/sinon": "^17.0.3",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.21.0",
+    "sinon": "^18.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^2.0.0",
+    "fast-check": "^3.19.0"
+  },
+  "dependencies": {
+    "hast-util-from-html": "^2.0.0",
+    "mdast-util-to-string": "^4.0.0",
+    "rehype-sanitize": "^6.0.0",
+    "rehype-stringify": "^10.0.0",
+    "remark-gfm": "^4.0.0",
+    "remark-parse": "^11.0.0",
+    "remark-rehype": "^11.1.0",
+    "remark-stringify": "^11.0.0",
+    "unified": "^11.0.4",
+    "unist-util-visit": "^5.0.0"
+  }
+}
