@@ -2,7 +2,7 @@
   "name": "kiro-md-translator-plugin",
   "displayName": "Read Markdown Translator",
   "description": "Rendered Markdown preview with synchronous translation for the Kiro IDE.",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "icon": "media/icon.png",
   "publisher": "VladimirTroyanenko",
   "license": "MIT",
@@ -58,7 +58,11 @@
       "properties": {
         "kiro-md-translator.providerType": {
           "type": "string",
-          "enum": ["deepl", "google", "custom"],
+          "enum": [
+            "deepl",
+            "google",
+            "custom"
+          ],
           "enumDescriptions": [
             "DeepL API (Free or Pro).",
             "Google Cloud Translation API.",
@@ -84,7 +88,10 @@
         },
         "kiro-md-translator.translationMode": {
           "type": "string",
-          "enum": ["on-demand", "automatic"],
+          "enum": [
+            "on-demand",
+            "automatic"
+          ],
           "enumDescriptions": [
             "Translate only when you click the Translate button.",
             "Translate automatically on open and on every edit."
