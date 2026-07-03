@@ -1,6 +1,7 @@
 # Sources and dev tooling — the runtime is the esbuild bundle in out/
 .kiro/**
 .ai_docs/**
+.claude/**
 src/**
 test/**
 node_modules/**
