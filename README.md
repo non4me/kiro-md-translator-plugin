@@ -46,31 +46,6 @@ Settings (`@ext:VladimirTroyanenko.kiro-md-translator-plugin`). There is no sepa
 - **Storage / Target Language** — language codes. Storage must be a base code (e.g. `en`); Target may
   be regional (e.g. `en-US`). Leave Target empty to disable translation.
 - **Custom Endpoint** — base URL for the custom provider (used only when Provider Type is `custom`).
-- **Translation Mode** — `on-demand` (Translate button) or `automatic` (on open / after edits).
-
-## Development
-
-```bash
-npm run typecheck    # tsc --noEmit (src/ only)
-npm test             # vitest run — unit + property tests
-npm run build        # esbuild → out/extension.js + out/webview/*.js
-npm run package      # build + vsce package → .vsix
-```
-
-Run a single test: `npx vitest run test/<file>.test.ts` or `npx vitest run -t "<name>"`.
-
-The project is **spec-driven**: the authoritative source is
-`.kiro/specs/kiro-md-translator-plugin/{requirements.md,design.md,tasks.md}`. Architecture notes,
-conventions, and the (important) `vscode`-is-mocked-in-tests detail live in `CLAUDE.md`.
-An implementation/verification journal is in `.ai_docs/INDEX.md`.
-
-## Status
-
-Verified: type-check, the unit/property test suite, and esbuild bundling. The mandatory test set
-(spec Properties P1–P3, P8–P12 and the data-integrity / memory / reverse-cache units) passes; the
-remaining `*`-marked timing/UI/e2e tests in `tasks.md` are optional and not yet implemented. The
-extension has been iterated inside a live Kiro host (custom-editor preview, DeepL translation,
-native settings); providers are unit-tested against mocked HTTP (no live DeepL/Google calls in CI).
 
 ## License
 
