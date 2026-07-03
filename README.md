@@ -19,18 +19,6 @@ right). The file on disk always stays in the **Storage language** (default Engli
 - API keys stored only in the IDE SecretStorage / OS keychain, per provider (never in workspace config).
 - English UI; all configuration lives in the standard VS Code settings page.
 
-## Install
-
-Build the `.vsix` and install it:
-
-```bash
-npm install
-npm run package          # produces kiro-md-translator-plugin-<version>.vsix
-```
-
-Then in the IDE: Extensions → "Install from VSIX…" → select the file (or
-`code --install-extension kiro-md-translator-plugin-<version>.vsix`).
-
 ## Settings
 
 All settings live in the **standard VS Code settings page** — open it with the command
