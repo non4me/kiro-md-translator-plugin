@@ -136,6 +136,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
 // Feather-style outline glyphs (stroke, no fill): edit-2 pencil + message-square.
 const EDIT_ICON = 'M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z'
 const COMMENT_ICON = 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'
+const GUTTER_INSET_PX = 6 // where the icon column sits inside the pane's left gutter
 
 /** Build a stroked (outline) 24×24 icon from a single path. */
 function icon(pathD: string): SVGElement {
@@ -152,17 +153,15 @@ function icon(pathD: string): SVGElement {
   return svg
 }
 
-/** Draw the always-visible edit + comment icon column in the left gutter of every
- *  block (req 10.8), in BOTH single and bilingual view. Edit/comment used to live in
- *  the hover tooltip; they now live here, so the tooltip is translation-only (and in
- *  bilingual there is no tooltip at all, req 10.5). Reuses existing host messages. */
+/** Draw the edit + comment icon column in the left gutter of every block (req 10.8),
+ *  in BOTH single and bilingual view. Edit/comment used to live in the hover tooltip;
+ *  they now live here, so the tooltip is translation-only (and in bilingual there is no
+ *  tooltip at all, req 10.5). Reuses existing host messages. */
 function drawBlockControls(): void {
   for (const el of blocks()) {
-    // Only TOP-LEVEL blocks (direct children of the pane) get gutter icons: a nested
-    // <li> or <p> is indented by its list/blockquote, so a left-gutter icon would sit
-    // on the bullet or double up. The pane is `#content` (single) or a `.bcell` (bilingual).
-    const parent = el.parentElement
-    if (!parent || (parent.id !== 'content' && !parent.classList.contains('bcell'))) continue
+    // Skip a block nested inside ANOTHER indexed block (a loose list's inner <p> — its
+    // <li> already carries the icons) so the two don't draw an overlapping duplicate.
+    if (el.parentElement?.closest('[data-paragraph-index]')) continue
     if (el.querySelector(':scope > .bctl')) continue // fresh render, but stay idempotent
     const idx = Number(el.dataset.paragraphIndex)
 
@@ -195,6 +194,14 @@ function drawBlockControls(): void {
     ctl.className = 'bctl'
     ctl.addEventListener('dblclick', (e) => e.stopPropagation()) // don't reach #content's dblclick
     ctl.append(edit, cmt)
+    // Pull the icon column into the pane's left gutter regardless of the block's own
+    // indentation (list items / blockquotes sit further right). The indent is padding-
+    // based, so it is width-independent and stays correct across resizes.
+    const pane = (el.closest('.bcell') as HTMLElement | null) ?? content
+    const paneRect = pane.getBoundingClientRect()
+    if (paneRect.width > 0) {
+      ctl.style.left = `${GUTTER_INSET_PX - (el.getBoundingClientRect().left - paneRect.left)}px`
+    }
     el.appendChild(ctl)
   }
 }

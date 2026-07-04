@@ -40,8 +40,8 @@ export function getPreviewHtml(
     /* Per-block edit + comment controls (req 10.8): outline icons stacked vertically in
        the left gutter, always visible in BOTH views (edit/comment left the tooltip). */
     #content [data-paragraph-index] { position: relative; }
-    .bctl { position: absolute; top: .05rem; left: -2rem; display: flex; flex-direction: column;
-      gap: .15rem; align-items: center; }
+    .bctl { position: absolute; top: .05rem; display: flex; flex-direction: column;
+      gap: .15rem; align-items: center; } /* left is set per block in JS for gutter alignment */
     .bctl button { display: flex; padding: 0; margin: 0; border: none; background: none;
       color: var(--vscode-foreground); cursor: pointer; opacity: 0; }
     /* Icons appear only while the block is hovered (req 10.8)... */

@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.9] — 2026-07-05
+
+### Fixed
+
+- **Edit/comment icons now appear on list items and other indented blocks too.** In 0.4.7 the icons
+  were limited to top-level paragraphs/headings to avoid landing on list bullets. They are now shown for
+  every block (list items, block-quote paragraphs included) and aligned into the same left gutter
+  regardless of the block's indentation, so they never overlap a bullet or number. A loose list still
+  shows a single set of icons per item.
+
+[0.4.9]: #049--2026-07-05
+
 ## [0.4.8] — 2026-07-05
 
 ### Changed
