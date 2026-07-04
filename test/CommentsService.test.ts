@@ -176,6 +176,27 @@ describe('CommentsService', () => {
     expect(store.size).toBe(0) // nothing was written to disk
   })
 
+  it('re-anchors an untrusted sidecar with under-specified anchor fields without throwing', async () => {
+    // Repro of the crash: a hand-crafted sidecar whose anchor omits prefix/suffix,
+    // plus a document with TWO identical blocks (forces the disambiguation path that
+    // reaches diceSimilarity with the missing fields). Must not throw (req 11.8).
+    const { io } = memIO()
+    await io.write(
+      sidecarUri(docUri),
+      JSON.stringify({
+        version: 1,
+        docHash: 'stale',
+        threads: [
+          { anchor: { quote: 'foo' }, comments: [{ id: 'c1', body: 'x', createdAt: 'T', updatedAt: 'T' }] },
+        ],
+      }),
+    )
+    const s = svc(io)
+    await s.load()
+    const blocks = blocksFrom(['foo', 'foo'])
+    expect(() => s.reanchor(blocks, 'foo\n\nfoo')).not.toThrow()
+  })
+
   it('load tolerates a malformed sidecar file', async () => {
     const { io } = memIO()
     await io.write(sidecarUri(docUri), '{ corrupt')

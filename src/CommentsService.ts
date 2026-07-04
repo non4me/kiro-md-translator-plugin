@@ -79,13 +79,35 @@ export function serializeCommentsFile(data: CommentsFile): string {
   return JSON.stringify(data, null, 2)
 }
 
+/** Coerce a validated thread's anchor to safe types. `isValidThread` only checks
+ *  `quote`; the re-anchoring math assumes `prefix`/`suffix` are strings and
+ *  `hintLine` a number, so an untrusted sidecar that omits them (or gives wrong
+ *  types) must be normalized here — otherwise `diceSimilarity` throws on
+ *  `undefined.length` when a block has ≥2 anchor candidates. */
+function normalizeThread(t: CommentThread): CommentThread {
+  const a = t.anchor as unknown as Record<string, unknown>
+  return {
+    anchor: {
+      quote: typeof a.quote === 'string' ? a.quote : '',
+      prefix: typeof a.prefix === 'string' ? a.prefix : '',
+      suffix: typeof a.suffix === 'string' ? a.suffix : '',
+      hintLine: typeof a.hintLine === 'number' && Number.isFinite(a.hintLine) ? a.hintLine : 0,
+      quoteHash: typeof a.quoteHash === 'string' ? a.quoteHash : '',
+    },
+    orphaned: Boolean(t.orphaned),
+    comments: t.comments,
+  }
+}
+
 /** Tolerant parse: unknown/malformed input yields an empty store (never throws). */
 export function parseCommentsFile(raw: string | undefined): CommentsFile {
   if (!raw) return { version: VERSION, docHash: '', threads: [] }
   try {
     const obj = JSON.parse(raw) as Partial<CommentsFile>
     const threads = Array.isArray(obj.threads)
-      ? obj.threads.filter((t): t is CommentThread => isValidThread(t) && t.comments.length > 0)
+      ? obj.threads
+          .filter((t): t is CommentThread => isValidThread(t) && t.comments.length > 0)
+          .map(normalizeThread)
       : []
     return { version: VERSION, docHash: typeof obj.docHash === 'string' ? obj.docHash : '', threads }
   } catch {

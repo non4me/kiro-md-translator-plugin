@@ -288,9 +288,15 @@ export class PreviewController implements IPreviewController {
   private emitComments(): void {
     const svc = this.deps.commentsService
     if (!svc) return
-    const res = svc.reanchor(this.currentBlocks(), this.sourceText)
-    this.deps.post({ type: 'commentsForBlocks', blocks: res.forBlocks })
-    this.deps.post({ type: 'orphanedComments', threads: res.orphaned })
+    try {
+      const res = svc.reanchor(this.currentBlocks(), this.sourceText)
+      this.deps.post({ type: 'commentsForBlocks', blocks: res.forBlocks })
+      this.deps.post({ type: 'orphanedComments', threads: res.orphaned })
+    } catch {
+      // A malformed/untrusted sidecar must never break the preview; drop the comment
+      // layer for this pass instead of throwing into the host's event dispatcher.
+      this.deps.post({ type: 'commentsForBlocks', blocks: [] })
+    }
   }
 
   private postThread(paragraphIndex: number): void {

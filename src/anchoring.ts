@@ -31,8 +31,11 @@ function bigrams(s: string): Map<string, number> {
   return m
 }
 
-/** Sørensen–Dice coefficient over character bigrams ∈ [0,1]; 1 iff identical. */
+/** Sørensen–Dice coefficient over character bigrams ∈ [0,1]; 1 iff identical.
+ *  Non-string inputs score 0 — a defensive guard so a malformed/untrusted anchor
+ *  (e.g. a hand-crafted sidecar with a missing `prefix`/`suffix`) cannot throw. */
 export function diceSimilarity(a: string, b: string): number {
+  if (typeof a !== 'string' || typeof b !== 'string') return 0
   if (a === b) return 1
   if (a.length < 2 || b.length < 2) return 0
   const A = bigrams(a)

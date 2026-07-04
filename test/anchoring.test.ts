@@ -25,6 +25,11 @@ describe('anchoring primitives', () => {
     expect(normalize('  a\n\t b  ')).toBe('a b')
   })
 
+  it('dice similarity returns 0 for non-string args (untrusted-anchor guard)', () => {
+    expect(diceSimilarity(undefined as never, 'x')).toBe(0)
+    expect(diceSimilarity('x', undefined as never)).toBe(0)
+  })
+
   it('makeAnchor captures quote + adjacent-block context + hint line', () => {
     const blocks = blocksFrom(['First', 'Middle', 'Last'])
     const a = makeAnchor(blocks, 1)

@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.2] — 2026-07-04
+
+### Security
+
+- Harden comment-sidecar parsing against untrusted input. A hand-crafted `.<name>.comments.json`
+  (e.g. committed in an untrusted repository) whose anchor omitted `prefix`/`suffix`/`hintLine` could
+  throw a `TypeError` during re-anchoring when a block had two or more matching candidates, breaking
+  the comment layer for that document. Anchor fields are now coerced to safe types on load,
+  `diceSimilarity` ignores non-string input, and re-anchoring failures can no longer surface into the
+  preview. No code execution, secret, or file exposure was possible — the impact was a feature-level
+  denial of service.
+
+[0.4.2]: #042--2026-07-04
+
 ## [0.4.1] — 2026-07-04
 
 ### Added
