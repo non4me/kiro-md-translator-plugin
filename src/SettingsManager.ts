@@ -37,6 +37,21 @@ export class SettingsManager implements ISettingsManager {
     return value ? value : undefined
   }
 
+  getOllamaEndpoint(): string | undefined {
+    const value = this.cfg().get<string>('ollamaEndpoint', '')
+    return value ? value : undefined
+  }
+
+  getOllamaModel(): string {
+    return this.cfg().get<string>('ollamaModel', 'llama3.1') || 'llama3.1'
+  }
+
+  /** Do-not-translate terms (req 3.18). Blank/whitespace entries are dropped. */
+  getGlossary(): string[] {
+    const value = this.cfg().get<string[]>('glossary', [])
+    return Array.isArray(value) ? value.filter((t) => typeof t === 'string' && t.trim().length > 0) : []
+  }
+
   getConfig(): PluginConfig {
     return {
       targetLanguage: this.getTargetLanguage(),
@@ -44,6 +59,9 @@ export class SettingsManager implements ISettingsManager {
       translationMode: this.getTranslationMode(),
       providerType: this.getProviderType(),
       customEndpoint: this.getCustomEndpoint(),
+      ollamaEndpoint: this.getOllamaEndpoint(),
+      ollamaModel: this.getOllamaModel(),
+      glossary: this.getGlossary(),
     }
   }
 

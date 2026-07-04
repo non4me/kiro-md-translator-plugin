@@ -12,6 +12,7 @@ const TIP_GAP = 6
 const content = document.getElementById('content') as HTMLElement
 const tooltip = document.getElementById('tooltip') as HTMLElement
 const translateBtn = document.getElementById('translate-btn') as HTMLButtonElement
+const bilingualBtn = document.getElementById('bilingual-btn') as HTMLButtonElement
 const autoBadge = document.getElementById('auto-badge') as HTMLElement
 const statusEl = document.getElementById('status') as HTMLElement
 const modal = document.getElementById('modal') as HTMLElement
@@ -35,6 +36,12 @@ let translatedHtml: string | undefined
 let displaying: 'source' | 'translation' = 'source'
 let storageCode = ''
 let targetCode = ''
+
+// Bilingual (two-column) view state (req 10). Purely webview-local: it reuses the
+// cached source/translation HTML and shared data-paragraph-index — no API, no new
+// host message. `pendingBilingual` waits for a first translation before entering.
+let bilingual = false
+let pendingBilingual = false
 
 function langBadge(code: string): string {
   return code ? code.split('-')[0].toUpperCase() : ''
@@ -67,6 +74,86 @@ function showContent(html: string): void {
   content.setAttribute('aria-busy', 'false')
   statusEl.textContent = ''
   bindHover()
+}
+
+// --- bilingual (two-column) view (req 10) ------------------------------------
+
+/** Rebuild both panes (left = source, right = translation) from the cached HTML.
+ *  Deliberately binds NO hover — both languages are already visible (req 10.5). */
+function renderBilingualPanes(): void {
+  hideTooltipNow()
+  const left = document.createElement('div')
+  left.className = 'pane'
+  left.appendChild(document.createRange().createContextualFragment(sourceHtml ?? ''))
+  const right = document.createElement('div')
+  right.className = 'pane'
+  right.appendChild(document.createRange().createContextualFragment(translatedHtml ?? ''))
+  content.replaceChildren(left, right)
+  content.setAttribute('aria-busy', 'false')
+  statusEl.textContent = ''
+  bindPaneScrollSync(left, right)
+}
+
+function enterBilingual(): void {
+  if (translatedHtml === undefined) return // nothing to show on the right yet
+  bilingual = true
+  pendingBilingual = false
+  content.classList.add('bilingual')
+  renderBilingualPanes()
+  updateBilingualBtn()
+}
+
+function exitBilingual(): void {
+  bilingual = false
+  content.classList.remove('bilingual')
+  // Restore the single view (translation if we have it, else source) and keep the
+  // host's hover direction in sync via the existing displayModeChanged message.
+  if (translatedHtml !== undefined) {
+    displaying = 'translation'
+    showContent(translatedHtml)
+    post({ type: 'displayModeChanged', displaying: 'translation' })
+  } else {
+    displaying = 'source'
+    showContent(sourceHtml ?? '')
+    post({ type: 'displayModeChanged', displaying: 'source' })
+  }
+  updateButtonLabel()
+  updateBilingualBtn()
+}
+
+function updateBilingualBtn(): void {
+  bilingualBtn.disabled = targetCode === '' // no target → no translation to pair (req 10.2)
+  bilingualBtn.textContent = bilingual ? 'Single view' : 'Bilingual'
+}
+
+/** Paragraph-aligned scroll sync between the two panes (req 10.4): scrolling one
+ *  aligns the other on the same data-paragraph-index; a lock suppresses the echo. */
+function bindPaneScrollSync(a: HTMLElement, b: HTMLElement): void {
+  let lock = false
+  const topIndex = (pane: HTMLElement): string | undefined => {
+    const top = pane.getBoundingClientRect().top
+    const el = Array.from(pane.querySelectorAll<HTMLElement>('[data-paragraph-index]')).find(
+      (e) => e.getBoundingClientRect().bottom > top + 4,
+    )
+    return el?.dataset.paragraphIndex
+  }
+  const sync = (from: HTMLElement, to: HTMLElement) => (): void => {
+    if (lock) return
+    const idx = topIndex(from)
+    if (idx === undefined) return
+    const target = to.querySelector<HTMLElement>(`[data-paragraph-index="${idx}"]`)
+    if (target) {
+      lock = true // the responding pane must not echo a scroll back
+      target.scrollIntoView({ block: 'start' })
+      // Release on the next frame regardless of whether scrollIntoView actually
+      // moved the pane (a no-op scroll fires no echo event that would clear it).
+      requestAnimationFrame(() => {
+        lock = false
+      })
+    }
+  }
+  a.addEventListener('scroll', sync(a, b))
+  b.addEventListener('scroll', sync(b, a))
 }
 
 function blocks(): HTMLElement[] {
@@ -145,6 +232,7 @@ function textNode(tag: string, text: string): HTMLElement {
 window.addEventListener('scroll', () => {
   hideTooltipNow() // dismiss the hover tooltip on scroll
   window.clearTimeout(hoverTimer)
+  if (bilingual) return // bilingual panes scroll internally; sync handled per-pane
   if (suppressScroll) {
     suppressScroll = false
     return
@@ -156,6 +244,7 @@ window.addEventListener('scroll', () => {
 // The button toggles Translate <-> Original. Both directions reuse cached HTML
 // (no API) once a translation exists; the first translation asks the host.
 translateBtn.addEventListener('click', () => {
+  if (bilingual) return // the single-view toggle must not tear down the two-pane layout
   if (displaying === 'translation') {
     if (sourceHtml === undefined) return
     showContent(sourceHtml)
@@ -170,6 +259,20 @@ translateBtn.addEventListener('click', () => {
   } else {
     post({ type: 'translateRequest' }) // host translates (reuses the segment cache)
   }
+})
+// Bilingual toggle: enter needs a translation — request one first if absent.
+bilingualBtn.addEventListener('click', () => {
+  if (bilingual) {
+    exitBilingual()
+    return
+  }
+  if (targetCode === '') return // disabled anyway (req 10.2)
+  if (translatedHtml === undefined) {
+    pendingBilingual = true
+    post({ type: 'translateRequest' }) // enter once translationComplete arrives
+    return
+  }
+  enterBilingual()
 })
 content.addEventListener('dblclick', () => post({ type: 'dblclick' }))
 
@@ -208,6 +311,10 @@ window.addEventListener('message', (event: MessageEvent) => {
   switch (msg.type) {
     case 'renderContent': {
       sourceHtml = msg.html as string // always refresh the cached source for the toggle
+      if (bilingual) {
+        renderBilingualPanes() // refresh left (source); right keeps the last translation
+        break
+      }
       if (msg.display === false) break // keep the current translation on screen (req 2.6/3.11)
       translatedHtml = undefined
       displaying = 'source'
@@ -217,6 +324,14 @@ window.addEventListener('message', (event: MessageEvent) => {
     }
     case 'translationComplete': {
       translatedHtml = msg.translatedHtml as string
+      if (pendingBilingual) {
+        enterBilingual() // the user asked for bilingual before a translation existed
+        break
+      }
+      if (bilingual) {
+        renderBilingualPanes() // refresh the right (translation) pane
+        break
+      }
       displaying = 'translation'
       showContent(translatedHtml)
       updateButtonLabel()
@@ -229,6 +344,7 @@ window.addEventListener('message', (event: MessageEvent) => {
     case 'translationError':
       statusEl.textContent = `Error ${msg.code}: ${msg.message}`
       content.setAttribute('aria-busy', 'false')
+      pendingBilingual = false // a failed request must not capture a later unrelated translation
       break
     case 'tooltipLoading': {
       // Only render if the pointer is STILL over the block this reply is for
@@ -277,6 +393,9 @@ window.addEventListener('message', (event: MessageEvent) => {
       storageCode = String(msg.storageLang ?? '')
       targetCode = newTarget
       updateButtonLabel()
+      // A target change dropped the cached translation → bilingual can't pair anymore.
+      if (bilingual && translatedHtml === undefined) exitBilingual()
+      updateBilingualBtn()
       break
     }
     case 'memoryWarning':

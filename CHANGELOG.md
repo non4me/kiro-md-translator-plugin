@@ -3,6 +3,32 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.3.0] — 2026-07-04
+
+### Added
+
+- **Local LLM provider (Ollama).** A new `ollama` provider translates via a local Ollama server
+  (`ollamaEndpoint`, default `http://localhost:11434`) using `ollamaModel` (default `llama3.1`).
+  Keyless and offline; `http://` is allowed for localhost. Uses `/api/chat` with `format: json`.
+- **Bilingual two-column view.** A **Bilingual** header toggle shows the source and its translation
+  side by side with paragraph-synced scrolling (reusing the shared `data-paragraph-index`). No extra
+  API call — it reuses the already-rendered source/translation. Hover tooltips are suppressed while
+  bilingual (both languages are already visible).
+- **Glossary (do-not-translate terms).** A `glossary` setting lists terms (product names, identifiers)
+  that are masked before the provider call and restored verbatim afterwards, so they are never sent as
+  translatable text and never mistranslated.
+- **Persistent translation memory.** Translations are now remembered across IDE sessions via a
+  second-tier LRU (≤ 2000) backed by `globalState`, layered under the in-session 50-entry cache.
+  Reopening a file no longer re-spends API quota on already-translated text.
+
+### Changed
+
+- The translation cache is now two-tier (L1 in-memory ≤ 50 over L2 persistent memory). A change to the
+  storage language, provider (or its endpoint/model), or glossary invalidates BOTH tiers, since the
+  `[text, lang]` key does not distinguish them; a target-language change alone is safe (different key).
+
+[0.3.0]: #030--2026-07-04
+
 ## [0.2.4] — 2026-07-02
 
 ### Fixed

@@ -13,6 +13,7 @@ import {
   TranslatorError,
 } from './types'
 import { MarkdownRenderer } from './MarkdownRenderer'
+import { Glossary } from './Glossary'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyNode = any
@@ -36,6 +37,8 @@ export class TranslationEngine implements ITranslationEngine {
     private readonly getProvider: () => ITranslationProvider,
     private readonly cache: ITranslationCache,
     private readonly renderer: MarkdownRenderer,
+    /** Do-not-translate terms (req 3.18). Defaults to none for isolated use. */
+    private readonly getGlossary: () => string[] = () => [],
   ) {}
 
   async translate(
@@ -132,8 +135,12 @@ export class TranslationEngine implements ITranslationEngine {
 
     if (missSegments.length > 0) {
       assertNotAborted(signal)
+      // Mask glossary terms so they are never sent to the provider and are
+      // restored verbatim afterwards (req 3.18). Empty glossary → identity.
+      const glossary = new Glossary(this.getGlossary())
+      const masks = missSegments.map((s) => glossary.mask(s))
       const translated = await this.getProvider().translateBatch(
-        missSegments,
+        masks.map((m) => m.masked),
         sourceLang,
         targetLang,
         signal,
@@ -144,8 +151,11 @@ export class TranslationEngine implements ITranslationEngine {
         // An empty/whitespace field counts as "no translation" → keep the
         // source text (per-segment analogue of req 3.14); do not cache it.
         if (typeof raw === 'string' && raw.trim().length > 0) {
-          this.cache.set(segments[segIndex], targetLang, raw)
-          results[segIndex] = raw
+          // Restore glossary terms before caching, so the cache stores the final
+          // (restored) text keyed by the ORIGINAL unmasked segment.
+          const restored = masks[k].restore(raw)
+          this.cache.set(segments[segIndex], targetLang, restored)
+          results[segIndex] = restored
         } else {
           results[segIndex] = segments[segIndex]
         }

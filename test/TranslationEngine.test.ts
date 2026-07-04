@@ -15,7 +15,7 @@ type Batch = (
   signal: AbortSignal,
 ) => Promise<string[]>
 
-function makeEngine(translateBatch: Batch) {
+function makeEngine(translateBatch: Batch, glossary: string[] = []) {
   const cache = new TranslationCache()
   const renderer = new MarkdownRenderer()
   const provider = {
@@ -25,7 +25,7 @@ function makeEngine(translateBatch: Batch) {
     getSupportedLanguages: async () => [],
     testConnection: async () => {},
   }
-  const engine = new TranslationEngine(() => provider as never, cache, renderer)
+  const engine = new TranslationEngine(() => provider as never, cache, renderer, () => glossary)
   return { engine, cache, renderer }
 }
 
@@ -111,6 +111,32 @@ describe('TranslationEngine', () => {
     })
     await engine.translate('Hello.', 'en', 'de', new AbortController().signal, dir)
     expect(seenSource).toBe('en')
+  })
+
+  // Feature: kiro-md-translator-plugin, Property 16: Glossary terms masked out of translation input, restored verbatim
+  it('Property 16: glossary terms are never sent to the provider and are restored verbatim', async () => {
+    const terms = ['GitHub', 'DataLite', 'TSM', 'WidgetKit']
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.constantFrom(...terms), { minLength: 1, maxLength: 6 }),
+        async (sample) => {
+          const seen: string[] = []
+          const { engine } = makeEngine(async (segs) => {
+            seen.push(...segs)
+            return segs.map((s) => `translated ${s}`)
+          }, terms)
+          const para = sample.map((t, i) => `word${i} ${t} tail${i}`).join(' and ')
+          const out = await engine.translateToMarkdown(para, 'en', 'de', new AbortController().signal)
+          // (a) no glossary term is present in any segment sent to the provider
+          for (const seg of seen) {
+            for (const term of terms) expect(seg).not.toContain(term)
+          }
+          // (b) each term that occurred is restored verbatim in the output
+          for (const term of new Set(sample)) expect(out).toContain(term)
+        },
+      ),
+      { numRuns: 50 },
+    )
   })
 
   it('replaceParagraphInSource rewrites only the target range (7.14)', () => {

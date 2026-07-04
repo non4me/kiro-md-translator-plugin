@@ -24,7 +24,9 @@ export interface PreviewDeps {
   post: (message: ExtensionMessage) => void
   renderer: MarkdownRenderer
   engine: TranslationEngine
-  cache: ITranslationCache
+  /** Shared cache. `invalidate` (when present, LayeredTranslationCache) also
+   *  wipes the persistent tier; a plain TranslationCache falls back to `clear`. */
+  cache: ITranslationCache & { invalidate?: () => void }
   settings: ISettingsManager
   exportService: IExportService
   getDocumentText: () => string
@@ -68,6 +70,9 @@ export class PreviewController implements IPreviewController {
   private lastMode = ''
   private lastProvider = ''
   private lastEndpoint: string | undefined
+  private lastOllamaEndpoint: string | undefined
+  private lastOllamaModel = ''
+  private lastGlossary = '[]'
 
   private renderTimer: ReturnType<typeof setTimeout> | undefined
   private translateTimer: ReturnType<typeof setTimeout> | undefined
@@ -83,6 +88,9 @@ export class PreviewController implements IPreviewController {
     this.lastMode = cfg.translationMode
     this.lastProvider = cfg.providerType
     this.lastEndpoint = cfg.customEndpoint
+    this.lastOllamaEndpoint = cfg.ollamaEndpoint
+    this.lastOllamaModel = cfg.ollamaModel ?? ''
+    this.lastGlossary = JSON.stringify([...(cfg.glossary ?? [])].sort())
   }
 
   // --- lifecycle ---------------------------------------------------------
@@ -393,26 +401,43 @@ export class PreviewController implements IPreviewController {
    */
   onSettingsChanged(): void {
     const cfg = this.deps.settings.getConfig()
+    // Sort so a pure reorder of the same terms is NOT treated as a change (the
+    // config fingerprint sorts too); reordering does not change output, so it must
+    // not invalidate the cache. A genuine add/remove still differs after sorting.
+    const glossaryKey = JSON.stringify([...(cfg.glossary ?? [])].sort())
     const langChanged =
       cfg.targetLanguage !== this.lastTarget || cfg.storageLanguage !== this.lastStorage
-    // customEndpoint only affects the 'custom' provider; comparing it while deepl/google
-    // is active would needlessly clear the cache + force a re-translate (req: no spurious calls).
+    // An endpoint/model only affects its own provider; comparing it while another
+    // provider is active would needlessly invalidate the cache + force a re-translate
+    // (req: no spurious calls). Custom → customEndpoint; Ollama → endpoint + model.
     const providerChanged =
       cfg.providerType !== this.lastProvider ||
-      (cfg.providerType === 'custom' && cfg.customEndpoint !== this.lastEndpoint)
+      (cfg.providerType === 'custom' && cfg.customEndpoint !== this.lastEndpoint) ||
+      (cfg.providerType === 'ollama' &&
+        (cfg.ollamaEndpoint !== this.lastOllamaEndpoint ||
+          (cfg.ollamaModel ?? '') !== this.lastOllamaModel))
+    const glossaryChanged = glossaryKey !== this.lastGlossary
     const modeChanged = cfg.translationMode !== this.lastMode
-    // Cached translations key on [text, targetLang]; a storage-language or provider
-    // change makes same-key entries wrong, so the cache must be dropped (a target
-    // change alone is safe — it uses a different key).
-    const cacheStale = cfg.storageLanguage !== this.lastStorage || providerChanged
-    const inputsChanged = langChanged || providerChanged
+    // Cached translations key on [text, targetLang]; a storage-language, provider,
+    // or glossary change makes same-key entries wrong, so the cache must be dropped
+    // (a target change alone is safe — it uses a different key). req 9.5.
+    const cacheStale = cfg.storageLanguage !== this.lastStorage || providerChanged || glossaryChanged
+    const inputsChanged = langChanged || providerChanged || glossaryChanged
     this.lastTarget = cfg.targetLanguage
     this.lastStorage = cfg.storageLanguage
     this.lastProvider = cfg.providerType
     this.lastEndpoint = cfg.customEndpoint
+    this.lastOllamaEndpoint = cfg.ollamaEndpoint
+    this.lastOllamaModel = cfg.ollamaModel ?? ''
+    this.lastGlossary = glossaryKey
     this.lastMode = cfg.translationMode
     this.updateButtonState()
-    if (cacheStale) this.deps.cache.clear()
+    // Invalidate BOTH tiers (persistent memory too, req 9.5); a plain
+    // TranslationCache without invalidate() falls back to clear().
+    if (cacheStale) {
+      if (this.deps.cache.invalidate) this.deps.cache.invalidate()
+      else this.deps.cache.clear()
+    }
     if (cfg.translationMode === 'automatic' && cfg.targetLanguage) {
       // Automatic mode must always show the CURRENT translation: (re)translate on
       // an input change or when we've just switched into automatic (its button is

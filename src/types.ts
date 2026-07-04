@@ -32,7 +32,7 @@ export interface CacheEntry {
   lastAccessed: number
 }
 
-export type ProviderType = 'deepl' | 'google' | 'custom'
+export type ProviderType = 'deepl' | 'google' | 'custom' | 'ollama'
 export type TranslationMode = 'on-demand' | 'automatic'
 
 export interface PluginConfig {
@@ -41,6 +41,12 @@ export interface PluginConfig {
   translationMode: TranslationMode
   providerType: ProviderType
   customEndpoint: string | undefined
+  /** Local Ollama server base URL (providerType === 'ollama'). */
+  ollamaEndpoint: string | undefined
+  /** Ollama model name (providerType === 'ollama'). */
+  ollamaModel: string
+  /** Terms that must never be translated (kept verbatim), req 3.18. */
+  glossary: string[]
 }
 
 /** Messages Webview → Extension Host. */
@@ -180,6 +186,9 @@ export interface ISettingsManager {
   getTranslationMode(): TranslationMode
   getProviderType(): ProviderType
   getCustomEndpoint(): string | undefined
+  getOllamaEndpoint(): string | undefined
+  getOllamaModel(): string
+  getGlossary(): string[]
   onDidChangeSettings(handler: () => void): vscode.Disposable
 }
 
@@ -205,5 +214,6 @@ export interface IPreviewController {
 
 export interface IActivationController {
   activate(context: vscode.ExtensionContext): void
-  deactivate(): void
+  /** Returns the shutdown persist Thenable so the host can await it (req 9.6). */
+  deactivate(): Thenable<void> | void
 }

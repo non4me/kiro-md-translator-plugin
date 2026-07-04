@@ -1,12 +1,35 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import fc from 'fast-check'
-import { isValidEndpoint } from '../src/providers/urlValidation'
+import { isValidEndpoint, isValidOllamaEndpoint } from '../src/providers/urlValidation'
 import { DeepLProvider } from '../src/providers/DeepLProvider'
 import { GoogleTranslateProvider } from '../src/providers/GoogleTranslateProvider'
 import { CustomHttpProvider } from '../src/providers/CustomHttpProvider'
+import { OllamaProvider } from '../src/providers/OllamaProvider'
+import { createProvider } from '../src/providers/ProviderFactory'
 import { fetchWithTimeout } from '../src/providers/http'
+import type { PluginConfig } from '../src/types'
 
 afterEach(() => vi.unstubAllGlobals())
+
+function ollamaChatMock(translationsFor: (segs: string[]) => unknown[]) {
+  return vi.fn(async (_url: unknown, init: { body: string }) => {
+    const parsed = JSON.parse(init.body) as { messages: Array<{ role: string; content: string }> }
+    const segs = JSON.parse(parsed.messages[1].content) as string[]
+    const content = JSON.stringify({ translations: translationsFor(segs) })
+    return new Response(JSON.stringify({ message: { content } }), { status: 200 })
+  })
+}
+
+const baseConfig: PluginConfig = {
+  targetLanguage: 'de',
+  storageLanguage: 'en',
+  translationMode: 'on-demand',
+  providerType: 'ollama',
+  customEndpoint: undefined,
+  ollamaEndpoint: 'http://localhost:11434',
+  ollamaModel: 'llama3.1',
+  glossary: [],
+}
 
 // Feature: kiro-md-translator-plugin, Property 11: Endpoint URL validation accepts only https:// URLs
 describe('endpoint URL validation (Property 11)', () => {
@@ -99,6 +122,76 @@ describe('GoogleTranslateProvider', () => {
 describe('CustomHttpProvider', () => {
   it('rejects a non-https endpoint at construction', () => {
     expect(() => new CustomHttpProvider('k', 'http://insecure')).toThrow()
+  })
+})
+
+// Feature: kiro-md-translator-plugin, req 4.15
+describe('Ollama endpoint validation', () => {
+  it('accepts http:// and https:// (local server), rejects others', () => {
+    expect(isValidOllamaEndpoint('http://localhost:11434')).toBe(true)
+    expect(isValidOllamaEndpoint('https://ollama.internal')).toBe(true)
+    expect(isValidOllamaEndpoint('ftp://x')).toBe(false)
+    expect(isValidOllamaEndpoint('localhost:11434')).toBe(false)
+  })
+})
+
+describe('OllamaProvider', () => {
+  it('translates a JSON batch preserving order and posts to /api/chat', async () => {
+    const fetchMock = ollamaChatMock((segs) => segs.map((s) => `T(${s})`))
+    vi.stubGlobal('fetch', fetchMock)
+    const out = await new OllamaProvider('http://localhost:11434', 'llama3.1').translateBatch(
+      ['a', 'b', 'c'],
+      'en',
+      'de',
+      new AbortController().signal,
+    )
+    expect(out).toEqual(['T(a)', 'T(b)', 'T(c)'])
+    expect(String(fetchMock.mock.calls[0][0])).toContain('/api/chat')
+    const body = JSON.parse((fetchMock.mock.calls[0][1] as { body: string }).body) as {
+      format: string
+      stream: boolean
+    }
+    expect(body.format).toBe('json')
+    expect(body.stream).toBe(false)
+  })
+
+  it('falls back to "" for missing entries on a length mismatch (keeps source)', async () => {
+    // Model returns fewer translations than segments → the shortfall becomes ''
+    const fetchMock = ollamaChatMock(() => ['only-one'])
+    vi.stubGlobal('fetch', fetchMock)
+    const out = await new OllamaProvider('http://localhost:11434', 'llama3.1').translateBatch(
+      ['a', 'b'],
+      'en',
+      'de',
+      new AbortController().signal,
+    )
+    expect(out).toEqual(['only-one', ''])
+  })
+
+  it('chunks at 20 segments per request', async () => {
+    const fetchMock = ollamaChatMock((segs) => segs.map((s) => `T(${s})`))
+    vi.stubGlobal('fetch', fetchMock)
+    const segs = Array.from({ length: 25 }, (_, i) => `s${i}`)
+    const out = await new OllamaProvider('http://localhost:11434', 'llama3.1').translateBatch(
+      segs,
+      'auto',
+      'de',
+      new AbortController().signal,
+    )
+    expect(out).toHaveLength(25)
+    expect(out[24]).toBe('T(s24)')
+    expect(fetchMock).toHaveBeenCalledTimes(2) // 20 + 5
+  })
+
+  it('rejects an invalid endpoint at construction', () => {
+    expect(() => new OllamaProvider('localhost:11434', 'llama3.1')).toThrow()
+  })
+})
+
+describe('ProviderFactory (ollama)', () => {
+  it('builds a keyless OllamaProvider, ignoring the apiKey', () => {
+    const provider = createProvider(baseConfig, '')
+    expect(provider.id).toBe('ollama')
   })
 })
 

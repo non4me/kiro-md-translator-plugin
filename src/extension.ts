@@ -8,6 +8,8 @@ export function activate(context: vscode.ExtensionContext): void {
   controller.activate(context)
 }
 
-export function deactivate(): void {
-  controller?.deactivate()
+export function deactivate(): Thenable<void> | void {
+  // Return the persist Thenable so VS Code awaits the translation-memory flush
+  // before the extension host shuts down (req 9.6).
+  return controller?.deactivate()
 }

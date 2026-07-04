@@ -30,6 +30,10 @@ export function getPreviewHtml(
       padding: .4rem .8rem; border-bottom: 1px solid var(--vscode-panel-border);
       background: var(--vscode-editor-background); }
     #content { padding: 1rem 1.2rem; }
+    /* Bilingual: two independently scrolling panes (source | translation). */
+    #content.bilingual { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 0; }
+    #content.bilingual .pane { overflow-y: auto; max-height: calc(100vh - 2.6rem); padding: 1rem 1.2rem; }
+    #content.bilingual .pane:first-child { border-right: 1px solid var(--vscode-panel-border); }
     .paragraph-highlight { background: var(--vscode-editor-hoverHighlightBackground); }
     #tooltip { position: absolute; max-width: 28rem; padding: .5rem .7rem; border-radius: 4px;
       background: var(--vscode-editorHoverWidget-background);
@@ -48,6 +52,7 @@ export function getPreviewHtml(
 <body>
   <header>
     <button id="translate-btn" aria-label="Translate">Translate</button>
+    <button id="bilingual-btn" aria-label="Bilingual view" disabled>Bilingual</button>
     <span id="auto-badge" hidden>Auto</span>
     <span id="status" aria-live="polite"></span>
   </header>

@@ -2,6 +2,7 @@ import * as vscode from 'vscode'
 import { SettingsManager } from './SettingsManager'
 import { SecretManager } from './SecretManager'
 import { TranslationCache } from './TranslationCache'
+import { LayeredTranslationCache, PersistentTranslationCache } from './PersistentTranslationCache'
 import { TranslationEngine } from './TranslationEngine'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ExportService } from './ExportService'
@@ -17,6 +18,7 @@ const PROVIDER_LABEL: Record<ProviderType, string> = {
   deepl: 'DeepL',
   google: 'Google',
   custom: 'Custom',
+  ollama: 'Ollama',
 }
 
 /**
@@ -26,7 +28,8 @@ const PROVIDER_LABEL: Record<ProviderType, string> = {
  */
 export class ActivationController implements IActivationController, vscode.CustomTextEditorProvider {
   private readonly settings = new SettingsManager()
-  private readonly cache = new TranslationCache()
+  /** L1 in-memory (≤50) over L2 persistent memory; built in activate() with globalState. */
+  private cache!: LayeredTranslationCache
   private secrets!: SecretManager
   private context!: vscode.ExtensionContext
   private apiKey: string | undefined
@@ -40,6 +43,18 @@ export class ActivationController implements IActivationController, vscode.Custo
 
   activate(context: vscode.ExtensionContext): void {
     this.context = context
+    // L1 (in-memory, ≤50) over L2 persistent translation memory (globalState),
+    // so reopening a file across sessions reuses prior translations (req 9).
+    this.cache = new LayeredTranslationCache(
+      new TranslationCache(),
+      new PersistentTranslationCache(
+        context.globalState,
+        undefined,
+        undefined,
+        () => this.configFingerprint(),
+      ),
+      () => this.configFingerprint(),
+    )
     this.secrets = new SecretManager(context.secrets)
     this.ready = this.initApiKey()
 
@@ -69,6 +84,12 @@ export class ActivationController implements IActivationController, vscode.Custo
       ),
       this.settings.onDidChangeSettings(() => {
         void this.refreshApiKey()
+        // Drop the shared cache when the fingerprint (storage lang / provider /
+        // endpoint / model / glossary) changed. The L1+L2 tiers are owned here and
+        // outlive any preview, so this must happen at the owner level — a settings
+        // change made with NO preview open would otherwise leave stale entries that
+        // `deactivate()`'s flush re-persists under the new fingerprint (req 9.5).
+        this.cache.onConfigChanged()
         // Rewire the button AND refresh a now-stale translation on a language change.
         // Broadcast to EVERY open preview: `active` is only the most-recently-resolved
         // one, so a focused-but-not-last doc would otherwise never refresh.
@@ -77,8 +98,30 @@ export class ActivationController implements IActivationController, vscode.Custo
     )
   }
 
-  deactivate(): void {
-    this.cache.clear()
+  deactivate(): Thenable<void> | void {
+    // Persist the translation memory to disk on shutdown (req 9.6). Return the
+    // Thenable so VS Code awaits the write before tearing the host process down.
+    return this.cache?.flush()
+  }
+
+  /**
+   * Fingerprint of the config dimensions a cached `[text, targetLang]` entry
+   * depends on — storage language, provider (+ its endpoint/model), and glossary.
+   * `targetLanguage` is NOT included (it is already part of the cache key). The
+   * persistent tier stores this alongside its entries and drops them on a
+   * mismatch at hydration, so a between-sessions or cross-workspace settings
+   * divergence cannot serve stale translations (req 9.5).
+   */
+  private configFingerprint(): string {
+    const c = this.settings.getConfig()
+    return JSON.stringify([
+      c.storageLanguage,
+      c.providerType,
+      c.customEndpoint ?? '',
+      c.ollamaEndpoint ?? '',
+      c.ollamaModel,
+      [...c.glossary].sort(),
+    ])
   }
 
   /** Migrate a pre-per-provider key into the active slot, then cache the key. */
@@ -99,6 +142,11 @@ export class ActivationController implements IActivationController, vscode.Custo
   private async promptSetApiKey(provider?: ProviderType): Promise<void> {
     const p = provider ?? this.settings.getProviderType()
     const label = PROVIDER_LABEL[p] ?? p
+    if (p === 'ollama') {
+      // Ollama runs locally and is keyless — there is nothing to store.
+      void vscode.window.showInformationMessage('Ollama runs locally and requires no API key.')
+      return
+    }
     const key = await vscode.window.showInputBox({
       prompt: `${label} API key`,
       password: true,
@@ -146,7 +194,12 @@ export class ActivationController implements IActivationController, vscode.Custo
     const renderer = new MarkdownRenderer((rel) =>
       webview.asWebviewUri(vscode.Uri.joinPath(docDir, rel)).toString(),
     )
-    const engine = new TranslationEngine(() => this.buildProvider(), this.cache, renderer)
+    const engine = new TranslationEngine(
+      () => this.buildProvider(),
+      this.cache,
+      renderer,
+      () => this.settings.getGlossary(),
+    )
 
     const deps: PreviewDeps = {
       post: (message) => void webview.postMessage(message),
