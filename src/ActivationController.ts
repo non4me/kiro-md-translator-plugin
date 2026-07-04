@@ -80,9 +80,11 @@ export class ActivationController implements IActivationController, vscode.Custo
       vscode.commands.registerCommand('kiro-md-translator.testConnection', (provider?: ProviderType) =>
         this.testProviderConnection(provider),
       ),
-      // Add the active editor's selection to the Glossary do-not-translate list (req 3.19).
-      vscode.commands.registerCommand('kiro-md-translator.excludeSelection', () =>
-        this.excludeSelection(),
+      // Add the selection to the Glossary do-not-translate list (req 3.19). Invoked
+      // from the editor context menu (reads the text editor) and the preview webview
+      // context menu (the `data-vscode-context` arg carries the selection).
+      vscode.commands.registerCommand('kiro-md-translator.excludeSelection', (ctx?: unknown) =>
+        this.excludeSelection(ctx),
       ),
       vscode.commands.registerCommand('kiro-md-translator.saveTranslation', () =>
         this.active?.onWebviewMessage({ type: 'saveTranslation' }),
@@ -182,13 +184,25 @@ export class ActivationController implements IActivationController, vscode.Custo
     }
   }
 
-  /** Command / editor-context-menu: add the active editor's selection to the
-   *  Glossary (do-not-translate) list. The config change re-anchors the cache and
-   *  re-translates automatically via the settings listener (req 3.19). */
-  private async excludeSelection(): Promise<void> {
-    const editor = vscode.window.activeTextEditor
-    const selected =
-      editor && !editor.selection.isEmpty ? editor.document.getText(editor.selection).trim() : ''
+  /** Command: add the current selection to the Glossary (do-not-translate) list.
+   *  From the editor context menu it reads the active text editor's selection; from
+   *  the preview webview context menu it reads the selection out of the forwarded
+   *  `data-vscode-context`. The config change re-anchors the cache and re-translates
+   *  automatically via the settings listener (req 3.19). */
+  private async excludeSelection(context?: unknown): Promise<void> {
+    // A `webview/context` invocation carries the merged `data-vscode-context`; its
+    // presence (the `kiroMdHasSelection` key) marks the preview as the source, so we
+    // use the webview's selection and NEVER a possibly-stale background text editor.
+    const ctx = context as { kiroMdHasSelection?: boolean; kiroMdSelection?: string } | undefined
+    let selected: string
+    if (ctx && typeof ctx === 'object' && 'kiroMdHasSelection' in ctx) {
+      // Webview context menu: VS Code forwards the same data-vscode-context that
+      // gated the item, so the selection is always present here.
+      selected = (typeof ctx.kiroMdSelection === 'string' ? ctx.kiroMdSelection : '').trim()
+    } else {
+      const editor = vscode.window.activeTextEditor
+      selected = editor && !editor.selection.isEmpty ? editor.document.getText(editor.selection).trim() : ''
+    }
     if (!selected) {
       void vscode.window.showInformationMessage('Select some text to exclude from translation first.')
       return

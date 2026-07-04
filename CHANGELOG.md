@@ -3,6 +3,20 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.3] — 2026-07-04
+
+### Added
+
+- **Exclude selection from translation — now in the preview's right-click menu.** While viewing the
+  source, select text in the rendered preview, right-click, and choose **Exclude from translation** to
+  add it to the Glossary. The item is contributed to the webview's native context menu (via
+  `webview/context` + `data-vscode-context`), so it sits alongside Copy/Paste. It appears only on the
+  source view, since the Glossary is a storage-language list. The editor context menu added in 0.4.1 only
+  appeared in a Markdown source editor (the preview is a custom editor, where that menu does not apply);
+  this adds the action to the preview itself, which is the main surface.
+
+[0.4.3]: #043--2026-07-04
+
 ## [0.4.2] — 2026-07-04
 
 ### Security

@@ -431,6 +431,32 @@ commentClose.addEventListener('click', () => {
   openThreadIndex = -1
 })
 
+// --- exclude selection from translation (req 3.19) ---------------------------
+
+// Add "Exclude from translation" to the NATIVE right-click menu of the preview (a
+// custom-editor webview, where the editor/context menu does not apply). VS Code
+// reads `data-vscode-context` at right-click time and forwards it to the command:
+// `kiroMdHasSelection` gates the item's `when` clause; `kiroMdSelection` is the
+// text the command excludes. No host round-trip is needed — the same context that
+// shows the item also carries the selection to the command.
+let lastSelectionText = ''
+function updateSelectionContext(): void {
+  const active = document.activeElement
+  // Leave form fields to their native editing menu (Cut/Copy/Paste).
+  if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) return
+  // Only offer exclusion while the SOURCE (storage language) is shown — the
+  // Glossary is a storage-language list, so a translated selection must not be added.
+  const text = displaying === 'source' ? (window.getSelection()?.toString() ?? '').trim() : ''
+  if (text === lastSelectionText) return // skip redundant writes on caret-only changes
+  lastSelectionText = text
+  document.body.dataset.vscodeContext = JSON.stringify({
+    kiroMdHasSelection: text.length > 0,
+    kiroMdSelection: text,
+  })
+}
+document.addEventListener('selectionchange', updateSelectionContext)
+updateSelectionContext() // seed an initial (empty) context
+
 window.addEventListener('message', (event: MessageEvent) => {
   const msg = event.data as { type: string; [k: string]: unknown }
   switch (msg.type) {
