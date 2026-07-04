@@ -56,6 +56,9 @@ let targetCode = ''
 // host message. `pendingBilingual` waits for a first translation before entering.
 let bilingual = false
 let pendingBilingual = false
+// Bilingual pair highlight (req 10.7): the paragraph index currently highlighted
+// across BOTH panes; tracked so an intra-block pointer move does not re-toggle it.
+let pairIndex: string | undefined
 
 function langBadge(code: string): string {
   return code ? code.split('-')[0].toUpperCase() : ''
@@ -108,6 +111,7 @@ function renderBilingualPanes(): void {
   content.replaceChildren(left, right)
   content.setAttribute('aria-busy', 'false')
   statusEl.textContent = ''
+  pairIndex = undefined // the previously highlighted nodes were just detached
   bindPaneScrollSync(left, right)
 }
 
@@ -121,6 +125,7 @@ function enterBilingual(): void {
 }
 
 function exitBilingual(): void {
+  highlightPair(undefined) // drop the pair highlight before the panes are torn down
   bilingual = false
   content.classList.remove('bilingual')
   // Restore the single view (translation if we have it, else source) and keep the
@@ -171,6 +176,22 @@ function bindPaneScrollSync(a: HTMLElement, b: HTMLElement): void {
   }
   a.addEventListener('scroll', sync(a, b))
   b.addEventListener('scroll', sync(b, a))
+}
+
+/** Bilingual pair highlight (req 10.7): highlight the hovered block AND its
+ *  counterpart (same data-paragraph-index) in the other pane. Highlight-only —
+ *  no tooltip (req 10.5) and no host round-trip; `idx === pairIndex` short-circuits
+ *  so an intra-block pointer move does not thrash the class list. */
+function highlightPair(idx: string | undefined): void {
+  if (idx === pairIndex) return
+  for (const el of Array.from(content.querySelectorAll<HTMLElement>('.pair-highlight'))) {
+    el.classList.remove('pair-highlight')
+  }
+  pairIndex = idx
+  if (idx === undefined) return
+  for (const el of Array.from(content.querySelectorAll<HTMLElement>(`[data-paragraph-index="${idx}"]`))) {
+    el.classList.add('pair-highlight')
+  }
 }
 
 function blocks(): HTMLElement[] {
@@ -292,6 +313,18 @@ bilingualBtn.addEventListener('click', () => {
   enterBilingual()
 })
 content.addEventListener('dblclick', () => post({ type: 'dblclick' }))
+
+// Bilingual pair highlight (req 10.7). Delegated on the stable #content element so
+// it survives pane re-renders; a no-op outside bilingual view. Uses the shared
+// data-paragraph-index to pair a block with its translation in the other pane.
+content.addEventListener('mouseover', (e) => {
+  if (!bilingual) return
+  const block = (e.target as HTMLElement | null)?.closest<HTMLElement>('[data-paragraph-index]')
+  highlightPair(block?.dataset.paragraphIndex)
+})
+content.addEventListener('mouseleave', () => {
+  if (bilingual) highlightPair(undefined)
+})
 
 function debounce(fn: () => void, ms: number): () => void {
   let h: number | undefined

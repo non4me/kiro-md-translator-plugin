@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.4] — 2026-07-04
+
+### Added
+
+- **Bilingual view: linked paragraph highlight.** Hovering a paragraph in either column now highlights
+  that block *and* its counterpart (the matching translation) in the opposite column, so it is obvious
+  which source paragraph maps to which translation. The pair is tinted and marked with a left accent
+  bar. Highlight-only — it adds no tooltip and makes no translation request, reusing the shared
+  `data-paragraph-index` that already drives the two-column scroll sync (req 10.7).
+
+[0.4.4]: #044--2026-07-04
+
 ## [0.4.3] — 2026-07-04
 
 ### Added

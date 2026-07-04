@@ -35,6 +35,10 @@ export function getPreviewHtml(
     #content.bilingual .pane { overflow-y: auto; max-height: calc(100vh - 2.6rem); padding: 1rem 1.2rem; }
     #content.bilingual .pane:first-child { border-right: 1px solid var(--vscode-panel-border); }
     .paragraph-highlight { background: var(--vscode-editor-hoverHighlightBackground); }
+    /* Bilingual pair highlight (req 10.7): the hovered block and its counterpart in
+       the other pane. Inset box-shadow draws the left accent without shifting text. */
+    .pair-highlight { background: var(--vscode-editor-hoverHighlightBackground);
+      box-shadow: inset 3px 0 0 var(--vscode-focusBorder); }
     #tooltip { position: absolute; max-width: 28rem; padding: .5rem .7rem; border-radius: 4px;
       background: var(--vscode-editorHoverWidget-background);
       border: 1px solid var(--vscode-editorHoverWidget-border); display: none; z-index: 10; }
