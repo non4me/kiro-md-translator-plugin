@@ -39,9 +39,11 @@ export function getPreviewHtml(
     .bgrid .bcell-l { border-right: 1px solid var(--vscode-panel-border); }
     .paragraph-highlight { background: var(--vscode-editor-hoverHighlightBackground); }
     /* Bilingual pair highlight (req 10.7): the hovered block and its counterpart in
-       the other pane. Inset box-shadow draws the left accent without shifting text. */
-    .pair-highlight { background: var(--vscode-editor-hoverHighlightBackground);
-      box-shadow: inset 3px 0 0 var(--vscode-focusBorder); }
+       the other pane. The accent bar is a pseudo-element sitting in the cell's left
+       padding — to the LEFT of the text — so it never overlaps the first characters. */
+    .pair-highlight { position: relative; background: var(--vscode-editor-hoverHighlightBackground); }
+    .pair-highlight::before { content: ''; position: absolute; top: 0; bottom: 0; left: -.5rem;
+      width: 3px; background: var(--vscode-focusBorder); }
     #tooltip { position: absolute; max-width: 28rem; padding: .5rem .7rem; border-radius: 4px;
       background: var(--vscode-editorHoverWidget-background);
       border: 1px solid var(--vscode-editorHoverWidget-border); display: none; z-index: 10; }

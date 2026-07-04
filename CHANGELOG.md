@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.6] — 2026-07-05
+
+### Fixed
+
+- Bilingual pair highlight: the left accent bar no longer overlaps the first characters of the
+  paragraph. It is now drawn in the column's left padding, just to the left of the text.
+
+[0.4.6]: #046--2026-07-05
+
 ## [0.4.5] — 2026-07-04
 
 ### Changed
