@@ -167,6 +167,15 @@ describe('CommentsService', () => {
     expect(res.forBlocks).toEqual([{ paragraphIndex: 1, count: 1 }])
   })
 
+  it('flush() writes nothing when there are no comments (open+close must not litter a sidecar)', async () => {
+    const { io, store } = memIO()
+    const s = svc(io)
+    await s.load() // no sidecar exists yet
+    s.reanchor(blocksFrom(['Untouched paragraph']), 'Untouched paragraph')
+    await s.flush() // simulates PreviewController.dispose() with no comments added
+    expect(store.size).toBe(0) // nothing was written to disk
+  })
+
   it('load tolerates a malformed sidecar file', async () => {
     const { io } = memIO()
     await io.write(sidecarUri(docUri), '{ corrupt')

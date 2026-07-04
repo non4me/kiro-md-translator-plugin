@@ -24,4 +24,19 @@ describe('SettingsManager', () => {
     expect(cfg.providerType).toBe('google')
     expect(cfg.storageLanguage).toBe('en')
   })
+
+  it('addGlossaryTerm appends a new do-not-translate term (req 3.19)', async () => {
+    const s = new SettingsManager()
+    expect(await s.addGlossaryTerm('GitHub')).toBe(true)
+    expect(s.getGlossary()).toContain('GitHub')
+  })
+
+  it('addGlossaryTerm trims, dedupes, and ignores blanks', async () => {
+    __setConfig('kiro-md-translator', 'glossary', ['API'])
+    const s = new SettingsManager()
+    expect(await s.addGlossaryTerm('API')).toBe(false) // already present
+    expect(await s.addGlossaryTerm('   ')).toBe(false) // blank
+    expect(await s.addGlossaryTerm('  SDK  ')).toBe(true) // trimmed then added
+    expect(s.getGlossary()).toEqual(['API', 'SDK'])
+  })
 })

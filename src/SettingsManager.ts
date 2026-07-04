@@ -52,6 +52,24 @@ export class SettingsManager implements ISettingsManager {
     return Array.isArray(value) ? value.filter((t) => typeof t === 'string' && t.trim().length > 0) : []
   }
 
+  /**
+   * Append a term to the Glossary do-not-translate list (req 3.19). Persists to
+   * the workspace scope when a workspace is open, else globally. A blank or
+   * already-present term is a no-op. The resulting config change fires
+   * `onDidChangeSettings`, which invalidates the cache and re-translates (req 9.5).
+   */
+  async addGlossaryTerm(term: string): Promise<boolean> {
+    const t = term.trim()
+    if (!t) return false
+    const current = this.getGlossary()
+    if (current.includes(t)) return false
+    const target = vscode.workspace.workspaceFolders?.length
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global
+    await this.cfg().update('glossary', [...current, t], target)
+    return true
+  }
+
   getConfig(): PluginConfig {
     return {
       targetLanguage: this.getTargetLanguage(),

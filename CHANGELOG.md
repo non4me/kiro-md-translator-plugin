@@ -3,6 +3,23 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.1] — 2026-07-04
+
+### Added
+
+- **Exclude selection from translation.** Select text in a Markdown source editor, right-click, and
+  choose **"Markdown Translator: Exclude Selection from Translation"** to add it to the Glossary
+  do-not-translate list. The term is masked in all future translations and the cache re-anchors
+  automatically.
+
+### Fixed
+
+- Opening and closing a preview no longer creates an empty `.<name>.comments.json` sidecar next to the
+  file — the sidecar is written only once a comment actually exists. Comment sidecars are also excluded
+  from the packaged extension.
+
+[0.4.1]: #041--2026-07-04
+
 ## [0.4.0] — 2026-07-04
 
 ### Added

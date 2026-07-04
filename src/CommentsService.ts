@@ -100,6 +100,10 @@ export class CommentsService implements ICommentsService {
   /** paragraphIndex → the live threads resolved there (usually one). */
   private live = new Map<number, CommentThread[]>()
   private flushTimer: ReturnType<typeof setTimeout> | undefined
+  /** True once a comment was added/edited/deleted this session. */
+  private dirty = false
+  /** True if a sidecar already existed on disk when loaded. */
+  private existed = false
   private readonly uri: vscode.Uri
 
   constructor(
@@ -113,7 +117,9 @@ export class CommentsService implements ICommentsService {
   }
 
   async load(): Promise<void> {
-    this.data = parseCommentsFile(await this.io.read(this.uri))
+    const raw = await this.io.read(this.uri)
+    this.existed = raw !== undefined
+    this.data = parseCommentsFile(raw)
   }
 
   /**
@@ -221,17 +227,23 @@ export class CommentsService implements ICommentsService {
   }
 
   /** Persist now, cancelling any pending debounce; stamps `docHash` to the current
-   *  source so a later unchanged-document open takes the hintLine fast-path. */
+   *  source so a later unchanged-document open takes the hintLine fast-path. Writes
+   *  NOTHING when there is nothing to persist and no sidecar existed — so merely
+   *  opening and closing a preview never litters the workspace with an empty file. */
   flush(): Thenable<void> {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer)
       this.flushTimer = undefined
+    }
+    if (this.data.threads.length === 0 && !this.dirty && !this.existed) {
+      return Promise.resolve()
     }
     this.data.docHash = hashString(this.lastSource)
     return this.io.write(this.uri, serializeCommentsFile(this.data))
   }
 
   private stampAndFlush(): void {
+    this.dirty = true
     if (this.flushTimer) clearTimeout(this.flushTimer)
     this.flushTimer = setTimeout(() => void this.flush(), this.flushMs)
   }

@@ -45,6 +45,7 @@ export class CancellationTokenSource {
 }
 
 export const ViewColumn = { One: 1, Two: 2, Beside: -2 } as const
+export const ConfigurationTarget = { Global: 1, Workspace: 2, WorkspaceFolder: 3 } as const
 
 export class Position {
   constructor(public line: number, public character: number) {}
@@ -143,6 +144,7 @@ export default {
   EventEmitter,
   CancellationTokenSource,
   ViewColumn,
+  ConfigurationTarget,
   Position,
   Range,
   Uri,

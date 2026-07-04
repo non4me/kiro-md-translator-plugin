@@ -80,6 +80,10 @@ export class ActivationController implements IActivationController, vscode.Custo
       vscode.commands.registerCommand('kiro-md-translator.testConnection', (provider?: ProviderType) =>
         this.testProviderConnection(provider),
       ),
+      // Add the active editor's selection to the Glossary do-not-translate list (req 3.19).
+      vscode.commands.registerCommand('kiro-md-translator.excludeSelection', () =>
+        this.excludeSelection(),
+      ),
       vscode.commands.registerCommand('kiro-md-translator.saveTranslation', () =>
         this.active?.onWebviewMessage({ type: 'saveTranslation' }),
       ),
@@ -176,6 +180,25 @@ export class ActivationController implements IActivationController, vscode.Custo
     } catch (err) {
       void vscode.window.showErrorMessage(`${label}: ${(err as Error).message || 'connection failed'}`)
     }
+  }
+
+  /** Command / editor-context-menu: add the active editor's selection to the
+   *  Glossary (do-not-translate) list. The config change re-anchors the cache and
+   *  re-translates automatically via the settings listener (req 3.19). */
+  private async excludeSelection(): Promise<void> {
+    const editor = vscode.window.activeTextEditor
+    const selected =
+      editor && !editor.selection.isEmpty ? editor.document.getText(editor.selection).trim() : ''
+    if (!selected) {
+      void vscode.window.showInformationMessage('Select some text to exclude from translation first.')
+      return
+    }
+    const added = await this.settings.addGlossaryTerm(selected)
+    void vscode.window.showInformationMessage(
+      added
+        ? `Excluded from translation: "${selected}"`
+        : `Already excluded from translation: "${selected}"`,
+    )
   }
 
   resolveCustomTextEditor(

@@ -14,7 +14,7 @@ right). The file on disk always stays in the **Storage language** (default Engli
 - Translation in two modes: **on-demand** (a Translate button) and **automatic** (on open / after edits settle).
 - Pluggable translation providers: **DeepL**, **Google Translate**, a local **Ollama** LLM (offline, keyless), or a custom `https://` endpoint.
 - **Bilingual view** — a two-column toggle showing source and translation side by side with paragraph-synced scrolling.
-- **Glossary** — do-not-translate terms (product names, identifiers) kept verbatim and never sent to the translation API.
+- **Glossary** — do-not-translate terms (product names, identifiers) kept verbatim and never sent to the translation API; add the current selection to it by right-clicking in a Markdown editor → *Exclude Selection from Translation*.
 - **Persistent translation memory** — translations are remembered across IDE sessions, so reopening a file does not re-spend API quota on already-translated text.
 - **Comments** — annotate any block without touching the `.md`; comments live in a hidden sidecar and re-anchor to their block when the original is edited.
 - Hover any block to see the reverse translation; edit a paragraph (original ↔ translation auto-sync) and save it back.
@@ -41,7 +41,8 @@ Settings (`@ext:VladimirTroyanenko.kiro-md-translator-plugin`). There is no sepa
 - **Ollama Endpoint / Model** — the local Ollama server URL (default `http://localhost:11434`, `http://`
   allowed) and model (default `llama3.1`, must be pulled locally). Used only when Provider Type is `ollama`.
 - **Glossary** — a list of do-not-translate terms. Each is kept verbatim in the output and is never sent
-  as translatable text to the provider.
+  as translatable text to the provider. To add a term quickly, select it in a Markdown **source editor**
+  (Edit Mode), right-click, and choose **Exclude Selection from Translation**.
 
 ## Bilingual view
 

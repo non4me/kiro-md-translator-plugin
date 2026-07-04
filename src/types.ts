@@ -252,6 +252,9 @@ export interface ISettingsManager {
   getOllamaEndpoint(): string | undefined
   getOllamaModel(): string
   getGlossary(): string[]
+  /** Append a do-not-translate term to the Glossary setting (req 3.19). Resolves
+   *  to true if it was added, false if blank or already present. */
+  addGlossaryTerm(term: string): Promise<boolean>
   onDidChangeSettings(handler: () => void): vscode.Disposable
 }
 

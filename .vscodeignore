@@ -16,3 +16,5 @@ esbuild.mjs
 .gitignore
 .vscodeignore
 CLAUDE.md
+# Comment sidecars are per-user annotation data, never a shipped artefact.
+**/*.comments.json
