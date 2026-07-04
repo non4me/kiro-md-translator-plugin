@@ -35,6 +35,9 @@ let commentCounts = new Map<number, number>()
 let openThreadIndex = -1
 let threadMode: 'popover' | 'modal' = 'popover'
 let threadReqIndex = -1
+// The block a popover request was fired from — so the peek anchors to the hovered
+// pane in bilingual, not always the first (source) cell that blocks().find returns.
+let threadAnchorEl: HTMLElement | undefined
 
 let editIndex = -1
 let suppressScroll = false
@@ -91,7 +94,8 @@ function showContent(html: string): void {
   content.setAttribute('aria-busy', 'false')
   statusEl.textContent = ''
   bindHover()
-  // The DOM was replaced → any 💬 indicators are gone. Pull fresh comment data so
+  drawBlockControls() // req 10.8: edit/comment gutter icons (the tooltip is translation-only)
+  // The DOM was replaced → any comment markers are gone. Pull fresh comment data so
   // the host re-anchors and re-emits; this covers every re-render path uniformly.
   post({ type: 'requestComments' })
 }
@@ -124,6 +128,88 @@ function renderBilingualPanes(): void {
   content.setAttribute('aria-busy', 'false')
   statusEl.textContent = ''
   pairIndex = undefined // the previously highlighted nodes were just detached
+  drawBlockControls() // req 10.8: edit/comment icons per block
+  post({ type: 'requestComments' }) // fills the comment-icon counts / persistent bubbles
+}
+
+const SVG_NS = 'http://www.w3.org/2000/svg'
+// Feather-style outline glyphs (stroke, no fill): edit-2 pencil + message-square.
+const EDIT_ICON = 'M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z'
+const COMMENT_ICON = 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'
+
+/** Build a stroked (outline) 24×24 icon from a single path. */
+function icon(pathD: string): SVGElement {
+  const svg = document.createElementNS(SVG_NS, 'svg')
+  svg.setAttribute('viewBox', '0 0 24 24')
+  svg.setAttribute('fill', 'none')
+  svg.setAttribute('stroke', 'currentColor')
+  svg.setAttribute('stroke-width', '2')
+  svg.setAttribute('stroke-linecap', 'round')
+  svg.setAttribute('stroke-linejoin', 'round')
+  const path = document.createElementNS(SVG_NS, 'path')
+  path.setAttribute('d', pathD)
+  svg.appendChild(path)
+  return svg
+}
+
+/** Draw the always-visible edit + comment icon column in the left gutter of every
+ *  block (req 10.8), in BOTH single and bilingual view. Edit/comment used to live in
+ *  the hover tooltip; they now live here, so the tooltip is translation-only (and in
+ *  bilingual there is no tooltip at all, req 10.5). Reuses existing host messages. */
+function drawBlockControls(): void {
+  for (const el of blocks()) {
+    // Only TOP-LEVEL blocks (direct children of the pane) get gutter icons: a nested
+    // <li> or <p> is indented by its list/blockquote, so a left-gutter icon would sit
+    // on the bullet or double up. The pane is `#content` (single) or a `.bcell` (bilingual).
+    const parent = el.parentElement
+    if (!parent || (parent.id !== 'content' && !parent.classList.contains('bcell'))) continue
+    if (el.querySelector(':scope > .bctl')) continue // fresh render, but stay idempotent
+    const idx = Number(el.dataset.paragraphIndex)
+
+    const edit = document.createElement('button')
+    edit.className = 'bctl-edit'
+    edit.title = 'Edit'
+    edit.appendChild(icon(EDIT_ICON))
+    edit.addEventListener('click', (e) => {
+      e.stopPropagation()
+      post({ type: 'editParagraph', paragraphIndex: idx })
+    })
+
+    const cmt = document.createElement('button')
+    cmt.className = 'bctl-comment'
+    cmt.title = 'Comments'
+    cmt.appendChild(icon(COMMENT_ICON))
+    cmt.appendChild(Object.assign(document.createElement('span'), { className: 'cmt-count' }))
+    cmt.addEventListener('mouseenter', () => {
+      threadAnchorEl = el // anchor the popover to THIS block (its own pane in bilingual)
+      requestThread(idx, 'popover') // popover shown only if comments exist
+    })
+    // Bilingual has no bindHover, so give the popover a pointer dismiss path here.
+    cmt.addEventListener('mouseleave', scheduleHide)
+    cmt.addEventListener('click', (e) => {
+      e.stopPropagation()
+      openCommentModal(idx)
+    })
+
+    const ctl = document.createElement('span')
+    ctl.className = 'bctl'
+    ctl.addEventListener('dblclick', (e) => e.stopPropagation()) // don't reach #content's dblclick
+    ctl.append(edit, cmt)
+    el.appendChild(ctl)
+  }
+}
+
+/** Reflect commentCounts on the comment icons (both views): a persistent (marked)
+ *  bubble for blocks that have comments, plus a number when > 1. */
+function updateBlockCommentCounts(): void {
+  for (const el of blocks()) {
+    const cmt = el.querySelector<HTMLElement>(':scope > .bctl > .bctl-comment')
+    if (!cmt) continue
+    const count = commentCounts.get(Number(el.dataset.paragraphIndex)) ?? 0
+    cmt.classList.toggle('has', count > 0)
+    const c = cmt.querySelector<HTMLElement>('.cmt-count')
+    if (c) c.textContent = count > 1 ? String(count) : ''
+  }
 }
 
 function enterBilingual(): void {
@@ -198,7 +284,13 @@ function cancelHide(): void {
 
 function bindHover(): void {
   for (const el of blocks()) {
-    el.addEventListener('mouseover', () => {
+    el.addEventListener('mouseover', (e) => {
+      // Pointer over the gutter icons (DOM children of the block) is NOT hovering the
+      // text — don't arm the reverse-translation tooltip, and cancel any pending one.
+      if ((e.target as Element | null)?.closest('.bctl')) {
+        window.clearTimeout(hoverTimer)
+        return
+      }
       cancelHide() // returning from the tooltip must not hide it
       if (hoveredEl && hoveredEl !== el) hoveredEl.classList.remove('paragraph-highlight')
       el.classList.add('paragraph-highlight') // < 50 ms (req 7.1)
@@ -344,36 +436,6 @@ function requestThread(index: number, mode: 'popover' | 'modal'): void {
   threadMode = mode
   threadReqIndex = index
   post({ type: 'requestCommentThread', paragraphIndex: index })
-}
-
-/** Draw / update / remove the 💬 indicator on each block per `commentCounts`. */
-function drawIndicators(): void {
-  for (const el of blocks()) {
-    const idx = Number(el.dataset.paragraphIndex)
-    const count = commentCounts.get(idx) ?? 0
-    let ind = el.querySelector<HTMLElement>(':scope > .cmt-indicator')
-    if (count > 0) {
-      if (!ind) {
-        ind = document.createElement('span')
-        ind.className = 'cmt-indicator'
-        ind.textContent = '💬'
-        ind.appendChild(Object.assign(document.createElement('span'), { className: 'cmt-count' }))
-        ind.addEventListener('mouseenter', () => {
-          window.clearTimeout(hoverTimer) // suppress the pending translation tooltip
-          requestThread(idx, 'popover')
-        })
-        ind.addEventListener('click', (e) => {
-          e.stopPropagation()
-          openCommentModal(idx)
-        })
-        el.appendChild(ind)
-      }
-      const c = ind.querySelector<HTMLElement>('.cmt-count')
-      if (c) c.textContent = count > 1 ? ` ${count}` : ''
-    } else if (ind) {
-      ind.remove()
-    }
-  }
 }
 
 function openCommentModal(index: number): void {
@@ -523,19 +585,8 @@ window.addEventListener('message', (event: MessageEvent) => {
     }
     case 'showTooltip': {
       if (hoveredEl && Number(hoveredEl.dataset.paragraphIndex) === Number(msg.paragraphIndex)) {
-        const edit = document.createElement('button')
-        edit.textContent = 'Edit'
-        edit.addEventListener('click', () => {
-          hideTooltipNow()
-          post({ type: 'editParagraph', paragraphIndex: msg.paragraphIndex })
-        })
-        const comment = document.createElement('button')
-        comment.textContent = 'Comment'
-        comment.addEventListener('click', () => {
-          hideTooltipNow()
-          openCommentModal(Number(msg.paragraphIndex))
-        })
-        openTooltip(hoveredEl, textNode('div', String(msg.reverseTranslation)), edit, comment)
+        // Translation-only: edit/comment moved to the gutter icons (req 10.8, unified).
+        openTooltip(hoveredEl, textNode('div', String(msg.reverseTranslation)))
       }
       break
     }
@@ -578,7 +629,7 @@ window.addEventListener('message', (event: MessageEvent) => {
     case 'commentsForBlocks': {
       const list = (msg.blocks as Array<{ paragraphIndex: number; count: number }>) ?? []
       commentCounts = new Map(list.map((b) => [Number(b.paragraphIndex), Number(b.count)]))
-      drawIndicators()
+      updateBlockCommentCounts()
       break
     }
     case 'commentThread': {
@@ -587,8 +638,12 @@ window.addEventListener('message', (event: MessageEvent) => {
       if (threadMode === 'modal' && openThreadIndex === idx && !commentModal.hidden) {
         renderCommentList(comments)
       } else if (threadMode === 'popover' && threadReqIndex === idx && comments.length) {
-        // Read-only peek in the hover tooltip; a button opens the full editor.
-        const el = blocks().find((b) => Number(b.dataset.paragraphIndex) === idx)
+        // Read-only peek; anchor to the exact hovered block so in bilingual the popover
+        // opens over the hovered pane, not always the source cell blocks().find returns.
+        const el =
+          threadAnchorEl && Number(threadAnchorEl.dataset.paragraphIndex) === idx
+            ? threadAnchorEl
+            : blocks().find((b) => Number(b.dataset.paragraphIndex) === idx)
         if (el) {
           const box = document.createElement('div')
           for (const c of comments) {

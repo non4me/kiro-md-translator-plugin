@@ -29,14 +29,28 @@ export function getPreviewHtml(
     header { position: sticky; top: 0; display: flex; gap: .5rem; align-items: center;
       padding: .4rem .8rem; border-bottom: 1px solid var(--vscode-panel-border);
       background: var(--vscode-editor-background); }
-    #content { padding: 1rem 1.2rem; }
+    #content { padding: 1rem 1.2rem 1rem 2.4rem; } /* left gutter holds the edit/comment icons */
     /* Bilingual: one grid where each block PAIR is a row (height = the taller side),
        so a paragraph is always exactly across from its translation (req 10.4). The
        whole view scrolls as one — no per-pane scroll sync. */
     #content.bilingual { padding: 0; }
     .bgrid { display: grid; grid-template-columns: 1fr 1fr; }
-    .bgrid .bcell { padding: .15rem 1.2rem; min-width: 0; overflow-wrap: anywhere; }
+    .bgrid .bcell { padding: .15rem 1.2rem .15rem 2.4rem; min-width: 0; overflow-wrap: anywhere; }
     .bgrid .bcell-l { border-right: 1px solid var(--vscode-panel-border); }
+    /* Per-block edit + comment controls (req 10.8): outline icons stacked vertically in
+       the left gutter, always visible in BOTH views (edit/comment left the tooltip). */
+    #content [data-paragraph-index] { position: relative; }
+    .bctl { position: absolute; top: .05rem; left: -2rem; display: flex; flex-direction: column;
+      gap: .15rem; align-items: center; }
+    .bctl button { display: flex; padding: 0; margin: 0; border: none; background: none;
+      color: var(--vscode-foreground); cursor: pointer; opacity: .4; }
+    .bctl button:hover { opacity: 1; }
+    .bctl button svg { width: 14px; height: 14px; display: block; }
+    .bctl-comment { position: relative; }
+    .bctl-comment.has { opacity: .7; }
+    .bctl-comment .cmt-count { position: absolute; top: -5px; right: -6px; font-size: 9px;
+      line-height: 1; padding: 0 3px; border-radius: 6px; vertical-align: baseline;
+      background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }
     .paragraph-highlight { background: var(--vscode-editor-hoverHighlightBackground); }
     /* Bilingual pair highlight (req 10.7): the hovered block and its counterpart in
        the other pane. The accent bar is a pseudo-element sitting in the cell's left
@@ -54,10 +68,7 @@ export function getPreviewHtml(
     #modal .box, #comment-modal .box { background: var(--vscode-editor-background); padding: 1rem;
       border-radius: 6px; width: min(40rem, 90vw); display: flex; flex-direction: column; gap: .5rem; }
     textarea { width: 100%; min-height: 4rem; }
-    /* Comments (req 11): a 💬 indicator next to a commented block; a thread modal. */
-    .cmt-indicator { cursor: pointer; margin-left: .35rem; opacity: .7; user-select: none; font-size: .9em; }
-    .cmt-indicator:hover { opacity: 1; }
-    .cmt-count { font-size: .75em; vertical-align: super; }
+    /* Comments (req 11): the thread modal + comment list. */
     #comment-list { display: flex; flex-direction: column; gap: .4rem; max-height: 42vh; overflow-y: auto; }
     .cmt-item { border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: .4rem .5rem;
       display: flex; flex-direction: column; gap: .3rem; }

@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.7] — 2026-07-05
+
+### Changed
+
+- **Edit and comment moved to per-paragraph gutter icons, in both views.** Each top-level paragraph and
+  heading now shows a compact column of two outline icons in the left gutter — a pencil (opens the paragraph-edit dialog)
+  and a speech bubble (hover to preview the comment thread, click to add / edit / delete comments). A
+  paragraph that already has comments keeps its bubble marked with the count (this replaces the old 💬
+  indicator). The hover tooltip is now translation-only. This also makes edit and comment reachable in
+  the bilingual view, which suppresses the tooltip and previously had no way to reach them.
+
+[0.4.7]: #047--2026-07-05
+
 ## [0.4.6] — 2026-07-05
 
 ### Fixed
