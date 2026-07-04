@@ -21,6 +21,20 @@ const modalTarget = document.getElementById('modal-target') as HTMLTextAreaEleme
 const modalError = document.getElementById('modal-error') as HTMLElement
 const modalCancel = document.getElementById('modal-cancel') as HTMLButtonElement
 const modalSave = document.getElementById('modal-save') as HTMLButtonElement
+const commentModal = document.getElementById('comment-modal') as HTMLElement
+const commentList = document.getElementById('comment-list') as HTMLElement
+const commentInput = document.getElementById('comment-input') as HTMLTextAreaElement
+const commentAdd = document.getElementById('comment-add') as HTMLButtonElement
+const commentClose = document.getElementById('comment-close') as HTMLButtonElement
+const orphanedEl = document.getElementById('orphaned') as HTMLElement
+
+// Comments (req 11). `commentCounts` drives the 💬 indicators; `openThreadIndex`
+// is the block whose thread modal is open; `threadMode` routes a commentThread
+// reply to either the modal or a hover popover (they can be requested apart).
+let commentCounts = new Map<number, number>()
+let openThreadIndex = -1
+let threadMode: 'popover' | 'modal' = 'popover'
+let threadReqIndex = -1
 
 let editIndex = -1
 let suppressScroll = false
@@ -74,6 +88,9 @@ function showContent(html: string): void {
   content.setAttribute('aria-busy', 'false')
   statusEl.textContent = ''
   bindHover()
+  // The DOM was replaced → any 💬 indicators are gone. Pull fresh comment data so
+  // the host re-anchors and re-emits; this covers every re-render path uniformly.
+  post({ type: 'requestComments' })
 }
 
 // --- bilingual (two-column) view (req 10) ------------------------------------
@@ -306,6 +323,114 @@ modalSave.addEventListener('click', () => {
   })
 })
 
+// --- comments (req 11) -------------------------------------------------------
+
+/** Ask the host for a block's thread; `mode` routes the reply (hover vs modal). */
+function requestThread(index: number, mode: 'popover' | 'modal'): void {
+  threadMode = mode
+  threadReqIndex = index
+  post({ type: 'requestCommentThread', paragraphIndex: index })
+}
+
+/** Draw / update / remove the 💬 indicator on each block per `commentCounts`. */
+function drawIndicators(): void {
+  for (const el of blocks()) {
+    const idx = Number(el.dataset.paragraphIndex)
+    const count = commentCounts.get(idx) ?? 0
+    let ind = el.querySelector<HTMLElement>(':scope > .cmt-indicator')
+    if (count > 0) {
+      if (!ind) {
+        ind = document.createElement('span')
+        ind.className = 'cmt-indicator'
+        ind.textContent = '💬'
+        ind.appendChild(Object.assign(document.createElement('span'), { className: 'cmt-count' }))
+        ind.addEventListener('mouseenter', () => {
+          window.clearTimeout(hoverTimer) // suppress the pending translation tooltip
+          requestThread(idx, 'popover')
+        })
+        ind.addEventListener('click', (e) => {
+          e.stopPropagation()
+          openCommentModal(idx)
+        })
+        el.appendChild(ind)
+      }
+      const c = ind.querySelector<HTMLElement>('.cmt-count')
+      if (c) c.textContent = count > 1 ? ` ${count}` : ''
+    } else if (ind) {
+      ind.remove()
+    }
+  }
+}
+
+function openCommentModal(index: number): void {
+  openThreadIndex = index
+  commentInput.value = ''
+  commentList.replaceChildren()
+  commentModal.hidden = false
+  requestThread(index, 'modal')
+}
+
+/** Re-pull the open modal's thread after a mutation so the list reflects it. */
+function refreshOpenThread(): void {
+  if (openThreadIndex >= 0) requestThread(openThreadIndex, 'modal')
+}
+
+function renderCommentList(comments: Array<{ id: string; body: string; updatedAt: string }>): void {
+  commentList.replaceChildren()
+  for (const c of comments) {
+    const item = document.createElement('div')
+    item.className = 'cmt-item'
+    const body = textNode('div', c.body)
+    body.className = 'cmt-body'
+    const meta = textNode('div', c.updatedAt)
+    meta.className = 'meta'
+    const row = document.createElement('div')
+    row.className = 'row'
+    const edit = document.createElement('button')
+    edit.textContent = 'Edit'
+    edit.addEventListener('click', () => startEditComment(item, c))
+    const del = document.createElement('button')
+    del.textContent = 'Delete'
+    del.addEventListener('click', () => {
+      post({ type: 'deleteComment', commentId: c.id })
+      refreshOpenThread()
+    })
+    row.append(edit, del)
+    item.append(body, meta, row)
+    commentList.appendChild(item)
+  }
+}
+
+function startEditComment(item: HTMLElement, c: { id: string; body: string }): void {
+  const ta = document.createElement('textarea')
+  ta.value = c.body
+  const save = document.createElement('button')
+  save.textContent = 'Save'
+  save.addEventListener('click', () => {
+    post({ type: 'editComment', commentId: c.id, body: ta.value })
+    refreshOpenThread()
+  })
+  const cancel = document.createElement('button')
+  cancel.textContent = 'Cancel'
+  cancel.addEventListener('click', refreshOpenThread)
+  const row = document.createElement('div')
+  row.className = 'row'
+  row.append(cancel, save)
+  item.replaceChildren(ta, row)
+}
+
+commentAdd.addEventListener('click', () => {
+  const body = commentInput.value.trim()
+  if (!body || openThreadIndex < 0) return
+  post({ type: 'addComment', paragraphIndex: openThreadIndex, body })
+  commentInput.value = ''
+  refreshOpenThread()
+})
+commentClose.addEventListener('click', () => {
+  commentModal.hidden = true
+  openThreadIndex = -1
+})
+
 window.addEventListener('message', (event: MessageEvent) => {
   const msg = event.data as { type: string; [k: string]: unknown }
   switch (msg.type) {
@@ -364,7 +489,13 @@ window.addEventListener('message', (event: MessageEvent) => {
           hideTooltipNow()
           post({ type: 'editParagraph', paragraphIndex: msg.paragraphIndex })
         })
-        openTooltip(hoveredEl, textNode('div', String(msg.reverseTranslation)), edit)
+        const comment = document.createElement('button')
+        comment.textContent = 'Comment'
+        comment.addEventListener('click', () => {
+          hideTooltipNow()
+          openCommentModal(Number(msg.paragraphIndex))
+        })
+        openTooltip(hoveredEl, textNode('div', String(msg.reverseTranslation)), edit, comment)
       }
       break
     }
@@ -404,6 +535,58 @@ window.addEventListener('message', (event: MessageEvent) => {
           ? 'File exceeds the recommended size. The preview may be slower'
           : 'High memory usage'
       break
+    case 'commentsForBlocks': {
+      const list = (msg.blocks as Array<{ paragraphIndex: number; count: number }>) ?? []
+      commentCounts = new Map(list.map((b) => [Number(b.paragraphIndex), Number(b.count)]))
+      drawIndicators()
+      break
+    }
+    case 'commentThread': {
+      const idx = Number(msg.paragraphIndex)
+      const comments = (msg.comments as Array<{ id: string; body: string; updatedAt: string }>) ?? []
+      if (threadMode === 'modal' && openThreadIndex === idx && !commentModal.hidden) {
+        renderCommentList(comments)
+      } else if (threadMode === 'popover' && threadReqIndex === idx && comments.length) {
+        // Read-only peek in the hover tooltip; a button opens the full editor.
+        const el = blocks().find((b) => Number(b.dataset.paragraphIndex) === idx)
+        if (el) {
+          const box = document.createElement('div')
+          for (const c of comments) {
+            const d = textNode('div', c.body)
+            d.className = 'cmt-body'
+            box.appendChild(d)
+          }
+          const open = document.createElement('button')
+          open.textContent = 'Open comments'
+          open.addEventListener('click', () => {
+            hideTooltipNow()
+            openCommentModal(idx)
+          })
+          openTooltip(el, box, open)
+        }
+      }
+      break
+    }
+    case 'orphanedComments': {
+      const threads = (msg.threads as Array<{ quote: string; comments: Array<{ body: string }> }>) ?? []
+      if (!threads.length) {
+        orphanedEl.hidden = true
+        orphanedEl.replaceChildren()
+        break
+      }
+      orphanedEl.replaceChildren(textNode('strong', `Outdated comments (${threads.length})`))
+      for (const t of threads) {
+        const div = document.createElement('div')
+        div.className = 'oc'
+        const q = textNode('span', `“${String(t.quote).slice(0, 80)}” `)
+        q.className = 'quote'
+        div.appendChild(q)
+        for (const c of t.comments) div.appendChild(textNode('span', `${c.body}  `))
+        orphanedEl.appendChild(div)
+      }
+      orphanedEl.hidden = false
+      break
+    }
     case 'openEditModal':
       editIndex = msg.paragraphIndex as number
       modalStorage.value = String(msg.storageText)

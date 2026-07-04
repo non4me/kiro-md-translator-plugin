@@ -6,6 +6,7 @@ import { LayeredTranslationCache, PersistentTranslationCache } from './Persisten
 import { TranslationEngine } from './TranslationEngine'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ExportService } from './ExportService'
+import { CommentsService } from './CommentsService'
 import { PreviewController, type PreviewDeps } from './PreviewController'
 import { createProvider } from './providers/ProviderFactory'
 import { getPreviewHtml } from './webview/getPreviewHtml'
@@ -208,6 +209,7 @@ export class ActivationController implements IActivationController, vscode.Custo
       cache: this.cache,
       settings: this.settings,
       exportService: new ExportService(),
+      commentsService: new CommentsService(document.uri),
       getDocumentText: () => document.getText(),
       getDocumentUri: () => document.uri,
       applyEdit: async (newText) => {

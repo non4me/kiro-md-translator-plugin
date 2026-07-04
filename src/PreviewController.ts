@@ -1,6 +1,8 @@
 import * as vscode from 'vscode'
 import {
+  type Block,
   type ExtensionMessage,
+  type ICommentsService,
   type IExportService,
   type IPreviewController,
   type ISettingsManager,
@@ -29,6 +31,9 @@ export interface PreviewDeps {
   cache: ITranslationCache & { invalidate?: () => void }
   settings: ISettingsManager
   exportService: IExportService
+  /** Block-anchored comments store (req 11). Optional: without it the preview has
+   *  no comment layer and every comment path is a no-op. */
+  commentsService?: ICommentsService
   getDocumentText: () => string
   getDocumentUri: () => vscode.Uri
   /** Persist edited source back to the document (used by saveParagraph, req 7.14). */
@@ -106,6 +111,9 @@ export class PreviewController implements IPreviewController {
       void ready.then(() => this.translateNow())
     }
     this.memoryTimer = setInterval(() => this.checkMemory(), MEMORY_CHECK_INTERVAL_MS)
+    // Load the comment sidecar, then push indicators (covers the case where the
+    // first render already completed; the webview also pulls after every render).
+    void this.deps.commentsService?.load().then(() => this.emitComments())
   }
 
   onDocumentChange(document: vscode.TextDocument): void {
@@ -131,6 +139,7 @@ export class PreviewController implements IPreviewController {
     this.abortController?.abort()
     this.renderToken?.cancel()
     this.renderToken?.dispose()
+    void this.deps.commentsService?.flush() // persist any pending comment edits
   }
 
   // --- rendering ---------------------------------------------------------
@@ -239,10 +248,57 @@ export class PreviewController implements IPreviewController {
       case 'saveTranslation':
         void this.handleExport()
         break
+      case 'requestComments':
+        this.emitComments()
+        break
+      case 'requestCommentThread':
+        this.postThread(message.paragraphIndex)
+        break
+      case 'addComment':
+        this.deps.commentsService?.addComment(message.paragraphIndex, message.body)
+        this.emitComments()
+        break
+      case 'editComment':
+        this.deps.commentsService?.editComment(message.commentId, message.body)
+        this.emitComments()
+        break
+      case 'deleteComment':
+        this.deps.commentsService?.deleteComment(message.commentId)
+        this.emitComments()
+        break
       case 'cancelParagraphEdit':
       case 'ready':
         break
     }
+  }
+
+  // --- comments (req 11) -------------------------------------------------
+
+  /** Build the current document's blocks (source text) for anchoring. Comments
+   *  always anchor to the STORAGE/source text, independent of the display mode. */
+  private currentBlocks(): Block[] {
+    return this.lineMap.map((m) => ({
+      paragraphIndex: m.paragraphIndex,
+      startLine: m.startLine,
+      text: this.paragraphText(m.paragraphIndex) ?? '',
+    }))
+  }
+
+  /** Re-anchor every thread and push the indicator counts + orphaned list. */
+  private emitComments(): void {
+    const svc = this.deps.commentsService
+    if (!svc) return
+    const res = svc.reanchor(this.currentBlocks(), this.sourceText)
+    this.deps.post({ type: 'commentsForBlocks', blocks: res.forBlocks })
+    this.deps.post({ type: 'orphanedComments', threads: res.orphaned })
+  }
+
+  private postThread(paragraphIndex: number): void {
+    this.deps.post({
+      type: 'commentThread',
+      paragraphIndex,
+      comments: this.deps.commentsService?.getThreadComments(paragraphIndex) ?? [],
+    })
   }
 
   /** Hover reverse translation (reqs 7.3/7.4). */

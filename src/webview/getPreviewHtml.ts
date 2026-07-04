@@ -40,11 +40,24 @@ export function getPreviewHtml(
       border: 1px solid var(--vscode-editorHoverWidget-border); display: none; z-index: 10; }
     /* Shown state is display:flex (centres the box); the initial [hidden] attribute
        + the [hidden] rule below keep it hidden until openEditModal removes hidden. */
-    #modal { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex;
+    #modal, #comment-modal { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex;
       align-items: center; justify-content: center; z-index: 20; }
-    #modal .box { background: var(--vscode-editor-background); padding: 1rem; border-radius: 6px;
-      width: min(40rem, 90vw); display: flex; flex-direction: column; gap: .5rem; }
+    #modal .box, #comment-modal .box { background: var(--vscode-editor-background); padding: 1rem;
+      border-radius: 6px; width: min(40rem, 90vw); display: flex; flex-direction: column; gap: .5rem; }
     textarea { width: 100%; min-height: 4rem; }
+    /* Comments (req 11): a 💬 indicator next to a commented block; a thread modal. */
+    .cmt-indicator { cursor: pointer; margin-left: .35rem; opacity: .7; user-select: none; font-size: .9em; }
+    .cmt-indicator:hover { opacity: 1; }
+    .cmt-count { font-size: .75em; vertical-align: super; }
+    #comment-list { display: flex; flex-direction: column; gap: .4rem; max-height: 42vh; overflow-y: auto; }
+    .cmt-item { border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: .4rem .5rem;
+      display: flex; flex-direction: column; gap: .3rem; }
+    .cmt-item .meta { font-size: .72em; opacity: .65; }
+    .cmt-item .row { display: flex; gap: .4rem; justify-content: flex-end; }
+    .cmt-body { white-space: pre-wrap; word-break: break-word; }
+    #orphaned { padding: .4rem 1.2rem; border-top: 1px solid var(--vscode-panel-border); font-size: .85em; }
+    #orphaned .oc { margin: .25rem 0; }
+    #orphaned .quote { opacity: .7; font-style: italic; }
     [hidden] { display: none !important; }
     .spinner::after { content: '…'; }
   </style>
@@ -57,6 +70,7 @@ export function getPreviewHtml(
     <span id="status" aria-live="polite"></span>
   </header>
   <article id="content" aria-busy="false"></article>
+  <section id="orphaned" aria-label="Outdated comments" hidden></section>
 
   <div id="tooltip" role="tooltip"></div>
 
@@ -69,6 +83,18 @@ export function getPreviewHtml(
       <div style="display:flex; gap:.5rem; justify-content:flex-end;">
         <button id="modal-cancel">Cancel</button>
         <button id="modal-save">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="comment-modal" role="dialog" aria-modal="true" aria-label="Comments" hidden>
+    <div class="box">
+      <strong>Comments</strong>
+      <div id="comment-list"></div>
+      <label>Add a comment <textarea id="comment-input"></textarea></label>
+      <div style="display:flex; gap:.5rem; justify-content:flex-end;">
+        <button id="comment-close">Close</button>
+        <button id="comment-add">Add</button>
       </div>
     </div>
   </div>

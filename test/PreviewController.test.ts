@@ -294,3 +294,81 @@ describe('PreviewController render/display coordination (req 2.6/3.11)', () => {
     expect(posted.find((m) => m.type === 'renderContent')).toMatchObject({ display: true })
   })
 })
+
+describe('PreviewController comments wiring (req 11)', () => {
+  const lineMap = [{ paragraphIndex: 0, startLine: 0, endLine: 0 }]
+
+  function fakeComments() {
+    const calls: unknown[][] = []
+    const service = {
+      calls,
+      load: async () => void calls.push(['load']),
+      reanchor: (blocks: unknown, src: unknown) => {
+        calls.push(['reanchor', blocks, src])
+        return { forBlocks: [{ paragraphIndex: 0, count: 2 }], orphaned: [{ quote: 'q', comments: [] }] }
+      },
+      getThreadComments: (i: number) => {
+        calls.push(['getThreadComments', i])
+        return [{ id: 'c1', body: 'hi', createdAt: 'T', updatedAt: 'T' }]
+      },
+      addComment: (i: number, b: string) => {
+        calls.push(['addComment', i, b])
+        return { id: 'c1', body: b, createdAt: 'T', updatedAt: 'T' }
+      },
+      editComment: (id: string, b: string) => void calls.push(['editComment', id, b]),
+      deleteComment: (id: string) => void calls.push(['deleteComment', id]),
+      flush: async () => void calls.push(['flush']),
+    }
+    return service
+  }
+
+  it('requestComments re-anchors and pushes indicator counts + the orphaned list', () => {
+    const svc = fakeComments()
+    const { controller, posted } = setup({ commentsService: svc as never })
+    controller.primeRenderState('Hello.', lineMap, false)
+    controller.onWebviewMessage({ type: 'requestComments' })
+    expect(svc.calls.some((c) => c[0] === 'reanchor')).toBe(true)
+    expect(posted.find((m) => m.type === 'commentsForBlocks')).toMatchObject({
+      blocks: [{ paragraphIndex: 0, count: 2 }],
+    })
+    expect(posted.find((m) => m.type === 'orphanedComments')).toBeDefined()
+  })
+
+  it('addComment routes to the service and re-emits indicators', () => {
+    const svc = fakeComments()
+    const { controller, posted } = setup({ commentsService: svc as never })
+    controller.primeRenderState('Hello.', lineMap, false)
+    controller.onWebviewMessage({ type: 'addComment', paragraphIndex: 0, body: 'nice' })
+    expect(svc.calls).toContainEqual(['addComment', 0, 'nice'])
+    expect(posted.find((m) => m.type === 'commentsForBlocks')).toBeDefined()
+  })
+
+  it('requestCommentThread posts the block thread', () => {
+    const svc = fakeComments()
+    const { controller, posted } = setup({ commentsService: svc as never })
+    controller.primeRenderState('Hello.', lineMap, false)
+    controller.onWebviewMessage({ type: 'requestCommentThread', paragraphIndex: 0 })
+    expect(posted.find((m) => m.type === 'commentThread')).toMatchObject({
+      paragraphIndex: 0,
+      comments: [{ body: 'hi' }],
+    })
+  })
+
+  it('edit and delete route to the service', () => {
+    const svc = fakeComments()
+    const { controller } = setup({ commentsService: svc as never })
+    controller.primeRenderState('Hello.', lineMap, false)
+    controller.onWebviewMessage({ type: 'editComment', commentId: 'c1', body: 'x' })
+    controller.onWebviewMessage({ type: 'deleteComment', commentId: 'c1' })
+    expect(svc.calls).toContainEqual(['editComment', 'c1', 'x'])
+    expect(svc.calls).toContainEqual(['deleteComment', 'c1'])
+  })
+
+  it('comment messages are no-ops when no comments service is injected', () => {
+    const { controller, posted } = setup()
+    controller.primeRenderState('Hello.', lineMap, false)
+    controller.onWebviewMessage({ type: 'requestComments' })
+    controller.onWebviewMessage({ type: 'addComment', paragraphIndex: 0, body: 'x' })
+    expect(posted.find((m) => m.type === 'commentsForBlocks')).toBeUndefined()
+  })
+})

@@ -49,6 +49,61 @@ export interface PluginConfig {
   glossary: string[]
 }
 
+// ---------------------------------------------------------------------------
+// Comments (req 11) — a block-anchored, sidecar-stored annotation layer.
+// Comments are NEVER part of the .md; they live in `.<name>.comments.json`.
+// ---------------------------------------------------------------------------
+
+/** A block of the current document, in document order (built from the lineMap). */
+export interface Block {
+  paragraphIndex: number
+  startLine: number
+  text: string
+}
+
+/**
+ * Content anchor that survives edits to the original (req 11.4). `quote` is the
+ * primary selector; `prefix`/`suffix` (adjacent block text) disambiguate ties;
+ * `hintLine` is a non-authoritative position hint; `quoteHash` is a fast-equality
+ * digest of `quote`. Re-anchoring prefers an orphan over a wrong match (req 11.9).
+ */
+export interface CommentAnchor {
+  quote: string
+  prefix: string
+  suffix: string
+  hintLine: number
+  quoteHash: string
+}
+
+export interface Comment {
+  id: string
+  createdAt: string
+  updatedAt: string
+  author?: string
+  body: string
+}
+
+/** One anchored block's thread (req: multiple comments per block). */
+export interface CommentThread {
+  anchor: CommentAnchor
+  orphaned: boolean
+  comments: Comment[]
+}
+
+/** Persisted sidecar shape. `docHash` enables a fast-path when the document is
+ *  unchanged since the last save (trust each thread's `hintLine`). */
+export interface CommentsFile {
+  version: number
+  docHash: string
+  threads: CommentThread[]
+}
+
+/** Per-block comment count sent to the webview to draw the 💬 indicators. */
+export interface BlockCommentCount {
+  paragraphIndex: number
+  count: number
+}
+
 /** Messages Webview → Extension Host. */
 export type WebviewMessage =
   | { type: 'ready' }
@@ -63,6 +118,11 @@ export type WebviewMessage =
   | { type: 'scrollChanged'; topParagraphIndex: number }
   | { type: 'saveTranslation' }
   | { type: 'displayModeChanged'; displaying: 'source' | 'translation' }
+  | { type: 'requestComments' }
+  | { type: 'requestCommentThread'; paragraphIndex: number }
+  | { type: 'addComment'; paragraphIndex: number; body: string }
+  | { type: 'editComment'; commentId: string; body: string }
+  | { type: 'deleteComment'; commentId: string }
 
 /** Messages Extension Host → Webview. */
 export type ExtensionMessage =
@@ -87,6 +147,9 @@ export type ExtensionMessage =
       targetLang: LanguageCode | undefined
     }
   | { type: 'memoryWarning'; level: 'large-file' | 'high-memory' }
+  | { type: 'commentsForBlocks'; blocks: BlockCommentCount[] }
+  | { type: 'commentThread'; paragraphIndex: number; comments: Comment[] }
+  | { type: 'orphanedComments'; threads: Array<{ quote: string; comments: Comment[] }> }
 
 export type ErrorCode =
   | 'RENDER_TIMEOUT'
@@ -204,6 +267,29 @@ export interface IExportService {
     originalUri: vscode.Uri,
     targetLang: LanguageCode,
   ): Promise<void>
+}
+
+/** Result of re-anchoring every thread against the current document (req 11). */
+export interface ReanchorResult {
+  /** Live threads: block index → comment count, for the webview indicators. */
+  forBlocks: BlockCommentCount[]
+  /** Threads whose anchored block could not be found (req 11.9), surfaced apart. */
+  orphaned: Array<{ quote: string; comments: Comment[] }>
+}
+
+/**
+ * Block-anchored comment store (req 11). Owns the `.comments.json` sidecar and
+ * the content re-anchoring. `reanchor` caches the block context so `addComment`
+ * can build an anchor without re-passing it. The `.md` is never mutated here.
+ */
+export interface ICommentsService {
+  load(): Promise<void>
+  reanchor(blocks: Block[], sourceText: string): ReanchorResult
+  getThreadComments(paragraphIndex: number): Comment[]
+  addComment(paragraphIndex: number, body: string): Comment | undefined
+  editComment(commentId: string, body: string): void
+  deleteComment(commentId: string): void
+  flush(): Thenable<void>
 }
 
 export interface IPreviewController {

@@ -16,6 +16,7 @@ right). The file on disk always stays in the **Storage language** (default Engli
 - **Bilingual view** — a two-column toggle showing source and translation side by side with paragraph-synced scrolling.
 - **Glossary** — do-not-translate terms (product names, identifiers) kept verbatim and never sent to the translation API.
 - **Persistent translation memory** — translations are remembered across IDE sessions, so reopening a file does not re-spend API quota on already-translated text.
+- **Comments** — annotate any block without touching the `.md`; comments live in a hidden sidecar and re-anchor to their block when the original is edited.
 - Hover any block to see the reverse translation; edit a paragraph (original ↔ translation auto-sync) and save it back.
 - Export the translated document as `{name}.{lang}.md`.
 - Two-tier cache: an in-session LRU (50 entries) over the persistent memory; code, inline code and URLs are never sent to the translation API.
@@ -48,6 +49,18 @@ Click **Bilingual** in the preview header to show the source and its translation
 columns; scrolling one column keeps the other aligned by paragraph. Click **Single view** to return.
 The button is enabled once a Target language is set (a translation is requested automatically if none
 exists yet).
+
+## Comments
+
+Add comments to any block without modifying the `.md` file. Hover a paragraph and click **Comment**
+(next to *Edit*), or click the **💬** indicator that appears next to a block that already has comments —
+hovering the indicator previews the thread, clicking it opens a modal to add, edit, or delete comments.
+
+Comments are stored in a hidden sidecar next to the file (`docs/api.md` → `docs/.api.md.comments.json`)
+— never inside the Markdown. Whether you commit that sidecar to git is your call (the extension does not
+add any `.gitignore` rule). Each comment is anchored to its block's **content**, so editing the original
+— even while the preview is closed — re-anchors the comment to the same block. If a commented block is
+deleted, its comments are shown under **Outdated comments** rather than lost or moved to the wrong block.
 
 ## License
 

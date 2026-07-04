@@ -3,6 +3,23 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.0] — 2026-07-04
+
+### Added
+
+- **Comments on paragraphs.** Leave comments on any block (paragraph, heading, list item) without
+  touching the `.md` file — they are stored in a hidden sidecar `.<name>.comments.json` next to it.
+  A 💬 indicator marks commented blocks; hovering it previews the thread, clicking it opens a modal to
+  add / edit / delete comments. A **Comment** action also sits next to **Edit** in the paragraph hover
+  tooltip. Multiple comments per block (threads) are supported, each with created/updated timestamps.
+- **Comment anchoring that survives edits.** Each comment is anchored to its block's *content*, not a
+  line number, so edits to the original — including edits made while the preview is closed — re-anchor
+  the comment to the same block (exact → whitespace-normalized → fuzzy ≥ 0.7 with surrounding-context
+  disambiguation). When a block is removed, its comments are surfaced as **outdated** rather than
+  silently deleted or re-attached to the wrong block.
+
+[0.4.0]: #040--2026-07-04
+
 ## [0.3.0] — 2026-07-04
 
 ### Added
