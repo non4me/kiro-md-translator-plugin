@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.5] — 2026-07-04
+
+### Changed
+
+- **Bilingual view: exact paragraph alignment.** The two columns are now laid out in a single grid
+  where each source/translation block pair is one row sized to the taller side, so every paragraph sits
+  exactly across from its translation at any scroll position. This replaces the previous two
+  independently scrolling columns (which only kept the topmost paragraph aligned and drifted further
+  down the page); the view now scrolls as one (req 10.3, 10.4).
+
+[0.4.5]: #045--2026-07-04
+
 ## [0.4.4] — 2026-07-04
 
 ### Added

@@ -30,10 +30,13 @@ export function getPreviewHtml(
       padding: .4rem .8rem; border-bottom: 1px solid var(--vscode-panel-border);
       background: var(--vscode-editor-background); }
     #content { padding: 1rem 1.2rem; }
-    /* Bilingual: two independently scrolling panes (source | translation). */
-    #content.bilingual { display: grid; grid-template-columns: 1fr 1fr; gap: 0; padding: 0; }
-    #content.bilingual .pane { overflow-y: auto; max-height: calc(100vh - 2.6rem); padding: 1rem 1.2rem; }
-    #content.bilingual .pane:first-child { border-right: 1px solid var(--vscode-panel-border); }
+    /* Bilingual: one grid where each block PAIR is a row (height = the taller side),
+       so a paragraph is always exactly across from its translation (req 10.4). The
+       whole view scrolls as one — no per-pane scroll sync. */
+    #content.bilingual { padding: 0; }
+    .bgrid { display: grid; grid-template-columns: 1fr 1fr; }
+    .bgrid .bcell { padding: .15rem 1.2rem; min-width: 0; overflow-wrap: anywhere; }
+    .bgrid .bcell-l { border-right: 1px solid var(--vscode-panel-border); }
     .paragraph-highlight { background: var(--vscode-editor-hoverHighlightBackground); }
     /* Bilingual pair highlight (req 10.7): the hovered block and its counterpart in
        the other pane. Inset box-shadow draws the left accent without shifting text. */

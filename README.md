@@ -45,9 +45,10 @@ Settings (`@ext:VladimirTroyanenko.kiro-md-translator-plugin`). There is no sepa
 
 ### Bilingual view
 Click **Bilingual** in the preview header to show the source and its translation side by side in two
-columns; scrolling one column keeps the other aligned by paragraph. Click **Single view** to return.
-The button is enabled once a Target language is set (a translation is requested automatically if none
-exists yet).
+columns, with each paragraph laid out exactly across from its translation (the columns scroll as one).
+Hovering a paragraph highlights it and its counterpart in the other column. Click **Single view** to
+return. The button is enabled once a Target language is set (a translation is requested automatically if
+none exists yet).
 
 ### Comments
 Add comments to any block without modifying the `.md` file. Hover a paragraph and click **Comment**

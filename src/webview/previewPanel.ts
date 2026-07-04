@@ -98,21 +98,32 @@ function showContent(html: string): void {
 
 // --- bilingual (two-column) view (req 10) ------------------------------------
 
-/** Rebuild both panes (left = source, right = translation) from the cached HTML.
- *  Deliberately binds NO hover — both languages are already visible (req 10.5). */
+/** Rebuild the bilingual view as ONE grid: pair the top-level blocks of source and
+ *  translation into grid rows (row height = the taller side) so every block sits
+ *  exactly across from its translation regardless of differing heights (req 10.4).
+ *  Source and translation share identical block structure, so children pair 1:1 by
+ *  position. The view scrolls as one — no per-pane scroll sync. Binds NO hover
+ *  tooltip (req 10.5); the delegated pair highlight (req 10.7) still applies. */
 function renderBilingualPanes(): void {
   hideTooltipNow()
-  const left = document.createElement('div')
-  left.className = 'pane'
-  left.appendChild(document.createRange().createContextualFragment(sourceHtml ?? ''))
-  const right = document.createElement('div')
-  right.className = 'pane'
-  right.appendChild(document.createRange().createContextualFragment(translatedHtml ?? ''))
-  content.replaceChildren(left, right)
+  const srcKids = Array.from(document.createRange().createContextualFragment(sourceHtml ?? '').children)
+  const tgtKids = Array.from(document.createRange().createContextualFragment(translatedHtml ?? '').children)
+  const grid = document.createElement('div')
+  grid.className = 'bgrid'
+  const rows = Math.max(srcKids.length, tgtKids.length)
+  for (let i = 0; i < rows; i++) {
+    const l = document.createElement('div')
+    l.className = 'bcell bcell-l'
+    if (srcKids[i]) l.appendChild(srcKids[i]) // appendChild MOVES it out of the fragment
+    const r = document.createElement('div')
+    r.className = 'bcell bcell-r'
+    if (tgtKids[i]) r.appendChild(tgtKids[i])
+    grid.append(l, r) // L,R interleaved → each pair is one grid row (2 columns)
+  }
+  content.replaceChildren(grid)
   content.setAttribute('aria-busy', 'false')
   statusEl.textContent = ''
   pairIndex = undefined // the previously highlighted nodes were just detached
-  bindPaneScrollSync(left, right)
 }
 
 function enterBilingual(): void {
@@ -146,36 +157,6 @@ function exitBilingual(): void {
 function updateBilingualBtn(): void {
   bilingualBtn.disabled = targetCode === '' // no target → no translation to pair (req 10.2)
   bilingualBtn.textContent = bilingual ? 'Single view' : 'Bilingual'
-}
-
-/** Paragraph-aligned scroll sync between the two panes (req 10.4): scrolling one
- *  aligns the other on the same data-paragraph-index; a lock suppresses the echo. */
-function bindPaneScrollSync(a: HTMLElement, b: HTMLElement): void {
-  let lock = false
-  const topIndex = (pane: HTMLElement): string | undefined => {
-    const top = pane.getBoundingClientRect().top
-    const el = Array.from(pane.querySelectorAll<HTMLElement>('[data-paragraph-index]')).find(
-      (e) => e.getBoundingClientRect().bottom > top + 4,
-    )
-    return el?.dataset.paragraphIndex
-  }
-  const sync = (from: HTMLElement, to: HTMLElement) => (): void => {
-    if (lock) return
-    const idx = topIndex(from)
-    if (idx === undefined) return
-    const target = to.querySelector<HTMLElement>(`[data-paragraph-index="${idx}"]`)
-    if (target) {
-      lock = true // the responding pane must not echo a scroll back
-      target.scrollIntoView({ block: 'start' })
-      // Release on the next frame regardless of whether scrollIntoView actually
-      // moved the pane (a no-op scroll fires no echo event that would clear it).
-      requestAnimationFrame(() => {
-        lock = false
-      })
-    }
-  }
-  a.addEventListener('scroll', sync(a, b))
-  b.addEventListener('scroll', sync(b, a))
 }
 
 /** Bilingual pair highlight (req 10.7): highlight the hovered block AND its
@@ -270,7 +251,7 @@ function textNode(tag: string, text: string): HTMLElement {
 window.addEventListener('scroll', () => {
   hideTooltipNow() // dismiss the hover tooltip on scroll
   window.clearTimeout(hoverTimer)
-  if (bilingual) return // bilingual panes scroll internally; sync handled per-pane
+  if (bilingual) return // bilingual scrolls as one grid; no editor scroll sync here
   if (suppressScroll) {
     suppressScroll = false
     return
