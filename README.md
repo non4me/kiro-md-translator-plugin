@@ -23,8 +23,7 @@ right). The file on disk always stays in the **Storage language** (default Engli
 - API keys stored only in the IDE SecretStorage / OS keychain, per provider (never in workspace config).
 - English UI; all configuration lives in the standard VS Code settings page.
 
-## Settings
-
+### Settings
 All settings live in the **standard VS Code settings page** — open it with the command
 **"Markdown Translator: Settings"** (`kiro-md-translator.openSettings`) or via Extensions → gear →
 Settings (`@ext:VladimirTroyanenko.kiro-md-translator-plugin`). There is no separate settings window.
@@ -44,15 +43,13 @@ Settings (`@ext:VladimirTroyanenko.kiro-md-translator-plugin`). There is no sepa
   as translatable text to the provider. To add a term quickly, select it in a Markdown **source editor**
   (Edit Mode), right-click, and choose **Exclude Selection from Translation**.
 
-## Bilingual view
-
+### Bilingual view
 Click **Bilingual** in the preview header to show the source and its translation side by side in two
 columns; scrolling one column keeps the other aligned by paragraph. Click **Single view** to return.
 The button is enabled once a Target language is set (a translation is requested automatically if none
 exists yet).
 
-## Comments
-
+### Comments
 Add comments to any block without modifying the `.md` file. Hover a paragraph and click **Comment**
 (next to *Edit*), or click the **💬** indicator that appears next to a block that already has comments —
 hovering the indicator previews the thread, clicking it opens a modal to add, edit, or delete comments.
@@ -63,6 +60,5 @@ add any `.gitignore` rule). Each comment is anchored to its block's **content**,
 — even while the preview is closed — re-anchors the comment to the same block. If a commented block is
 deleted, its comments are shown under **Outdated comments** rather than lost or moved to the wrong block.
 
-## License
-
+#### License
 MIT — see the `LICENSE` file.
