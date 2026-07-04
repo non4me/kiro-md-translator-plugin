@@ -43,11 +43,14 @@ export function getPreviewHtml(
     .bctl { position: absolute; top: .05rem; left: -2rem; display: flex; flex-direction: column;
       gap: .15rem; align-items: center; }
     .bctl button { display: flex; padding: 0; margin: 0; border: none; background: none;
-      color: var(--vscode-foreground); cursor: pointer; opacity: .4; }
-    .bctl button:hover { opacity: 1; }
+      color: var(--vscode-foreground); cursor: pointer; opacity: 0; }
+    /* Icons appear only while the block is hovered (req 10.8)... */
+    #content [data-paragraph-index]:hover > .bctl button { opacity: 1; }
+    /* ...except a block WITH comments keeps its comment icon shown, drawn filled. */
+    .bctl-comment.has { opacity: 1; }
+    .bctl-comment.has svg { fill: currentColor; }
     .bctl button svg { width: 14px; height: 14px; display: block; }
     .bctl-comment { position: relative; }
-    .bctl-comment.has { opacity: .7; }
     .bctl-comment .cmt-count { position: absolute; top: -5px; right: -6px; font-size: 9px;
       line-height: 1; padding: 0 3px; border-radius: 6px; vertical-align: baseline;
       background: var(--vscode-badge-background); color: var(--vscode-badge-foreground); }

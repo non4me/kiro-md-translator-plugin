@@ -3,6 +3,17 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.8] — 2026-07-05
+
+### Changed
+
+- **Gutter icons appear on hover.** The per-paragraph edit and comment icons are now shown only while
+  the pointer is over the paragraph. The one exception: a paragraph that already has comments keeps its
+  comment icon visible at all times, drawn **filled** (solid) to mark it — hovering the paragraph then
+  also reveals the pencil.
+
+[0.4.8]: #048--2026-07-05
+
 ## [0.4.7] — 2026-07-05
 
 ### Changed
