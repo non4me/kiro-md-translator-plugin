@@ -280,6 +280,7 @@ export class PreviewController implements IPreviewController {
     return this.lineMap.map((m) => ({
       paragraphIndex: m.paragraphIndex,
       startLine: m.startLine,
+      endLine: m.endLine,
       text: this.paragraphText(m.paragraphIndex) ?? '',
     }))
   }

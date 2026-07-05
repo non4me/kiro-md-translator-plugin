@@ -4,7 +4,7 @@
  * `html` nodes, so they are never translated and are stripped from the preview.
  * These functions never touch the filesystem and never throw on bad input.
  */
-import type { CommentThread, CommentsFile } from './types'
+import type { Block, CommentThread, CommentsFile } from './types'
 
 export const INLINE_MARKER = 'rmt:comments'
 const VERSION = 1
@@ -53,4 +53,41 @@ export function parseInline(source: string): CommentsFile {
     }
   }
   return { version: VERSION, docHash: '', threads }
+}
+
+/** One carrier block for a payload object. */
+function makeBlock(payload: object): string {
+  return `<!-- ${INLINE_MARKER}\n${JSON.stringify(payload, null, 2)}\n-->`
+}
+
+/** Strip old blocks, then append one block holding the whole CommentsFile. */
+export function serializeEof(source: string, data: CommentsFile): string {
+  const clean = stripInlineComments(source).replace(/\s+$/, '')
+  if (data.threads.length === 0) return clean + '\n'
+  return `${clean}\n\n${makeBlock({ version: data.version, threads: data.threads })}\n`
+}
+
+/** Single-pass rebuild: drop existing carrier blocks; after each block whose
+ *  endLine has live thread(s), insert one carrier block per thread. Line indices
+ *  are all against the CLEAN (comment-free) source, so no shifting bookkeeping. */
+export function serializeAfter(
+  source: string,
+  data: CommentsFile,
+  blocks: Block[],
+  live: Map<number, CommentThread[]>,
+): string {
+  const clean = stripInlineComments(source)
+  const lines = clean.split('\n')
+  const byEnd = new Map<number, CommentThread[]>()
+  for (const b of blocks) {
+    const threads = live.get(b.paragraphIndex)
+    if (threads && threads.length) byEnd.set(b.endLine, threads)
+  }
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    out.push(lines[i])
+    const threads = byEnd.get(i)
+    if (threads) for (const t of threads) out.push('', makeBlock({ threads: [t] }))
+  }
+  return out.join('\n')
 }

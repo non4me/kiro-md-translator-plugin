@@ -62,6 +62,7 @@ export interface PluginConfig {
 export interface Block {
   paragraphIndex: number
   startLine: number
+  endLine: number
   text: string
 }
 

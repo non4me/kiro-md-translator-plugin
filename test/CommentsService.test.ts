@@ -31,7 +31,7 @@ function memIO() {
 function blocksFrom(texts: string[]): Block[] {
   let line = 0
   return texts.map((text, i) => {
-    const b: Block = { paragraphIndex: i, startLine: line, text }
+    const b: Block = { paragraphIndex: i, startLine: line, endLine: line, text }
     line += 2
     return b
   })
