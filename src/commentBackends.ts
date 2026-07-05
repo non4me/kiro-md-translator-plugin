@@ -20,12 +20,14 @@ export interface PersistCtx {
 export type PersistResult = { kind: 'sidecar' } | { kind: 'inline'; newSource: string }
 
 export interface CommentBackend {
+  readonly medium: 'sidecar' | 'inline'
   load(source: string): Promise<CommentsFile>
   persist(ctx: PersistCtx): Promise<PersistResult>
   clear(source: string): Promise<{ newSource?: string }>
 }
 
 export class SidecarBackend implements CommentBackend {
+  readonly medium = 'sidecar' as const
   private existed = false
   private readonly uri: vscode.Uri
   constructor(docUri: vscode.Uri, private readonly io: SidecarIO = fsIO) {
@@ -53,6 +55,7 @@ export class SidecarBackend implements CommentBackend {
 }
 
 export class InlineEofBackend implements CommentBackend {
+  readonly medium = 'inline' as const
   async load(source: string): Promise<CommentsFile> { return parseInline(source) }
   async persist(ctx: PersistCtx): Promise<PersistResult> {
     return { kind: 'inline', newSource: serializeEof(ctx.source, ctx.data) }
@@ -63,6 +66,7 @@ export class InlineEofBackend implements CommentBackend {
 }
 
 export class InlineAfterBackend implements CommentBackend {
+  readonly medium = 'inline' as const
   async load(source: string): Promise<CommentsFile> { return parseInline(source) }
   async persist(ctx: PersistCtx): Promise<PersistResult> {
     const newSource = ctx.data.threads.length === 0

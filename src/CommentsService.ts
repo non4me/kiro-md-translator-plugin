@@ -178,6 +178,28 @@ export class CommentsService implements ICommentsService {
     }
   }
 
+  /** Swap the persistence backend at runtime (settings change). */
+  setBackend(backend: CommentBackend): void { this.backend = backend }
+
+  /** The active backend (for the controller to detect mode changes). */
+  currentBackend(): CommentBackend { return this.backend }
+
+  /**
+   * Re-home comments from `previous` to the CURRENT backend (already set via
+   * setBackend). Persists to the new location, then clears the old ONLY when the
+   * storage medium actually changed — for an inline→inline placement change the
+   * flush already stripped the old carriers and rewrote them in place, so clearing
+   * would wipe what we just wrote. Thread ids are stable, so nothing is lost.
+   */
+  async migrateFrom(previous: CommentBackend): Promise<void> {
+    await this.flush() // writes to the NEW backend (this.backend)
+    if (previous.medium === this.backend.medium) return // inline↔inline placement: already re-homed in place
+    const cleared = await previous.clear(this.getSource())
+    if (cleared.newSource !== undefined && this.writeSource && cleared.newSource !== this.getSource()) {
+      await this.writeSource(cleared.newSource)
+    }
+  }
+
   private stampAndFlush(): void {
     if (this.flushTimer) clearTimeout(this.flushTimer)
     this.flushTimer = setTimeout(() => void this.flush(), this.flushMs)

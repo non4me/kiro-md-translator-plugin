@@ -7,6 +7,7 @@ import { TranslationEngine } from './TranslationEngine'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ExportService } from './ExportService'
 import { CommentsService } from './CommentsService'
+import { type CommentBackend, SidecarBackend, InlineEofBackend, InlineAfterBackend } from './commentBackends'
 import { PreviewController, type PreviewDeps } from './PreviewController'
 import { createProvider } from './providers/ProviderFactory'
 import { getPreviewHtml } from './webview/getPreviewHtml'
@@ -145,6 +146,16 @@ export class ActivationController implements IActivationController, vscode.Custo
     return createProvider(this.settings.getConfig(), this.apiKey ?? '')
   }
 
+  /** Select the comment persistence backend from settings (req 11): sidecar by
+   *  default; inline end-of-file or after-paragraph when `commentStorage` is
+   *  `inline`, per `commentPlacement`. */
+  private makeCommentBackend(docUri: vscode.Uri): CommentBackend {
+    if (this.settings.getCommentStorage() !== 'inline') return new SidecarBackend(docUri)
+    return this.settings.getCommentPlacement() === 'end-of-file'
+      ? new InlineEofBackend()
+      : new InlineAfterBackend()
+  }
+
   /** Command: prompt for a provider's API key (masked) and store it in the keychain. */
   private async promptSetApiKey(provider?: ProviderType): Promise<void> {
     const p = provider ?? this.settings.getProviderType()
@@ -239,6 +250,22 @@ export class ActivationController implements IActivationController, vscode.Custo
       () => this.settings.getGlossary(),
     )
 
+    const applyEdit = async (newText: string) => {
+      const edit = new vscode.WorkspaceEdit()
+      const fullRange = new vscode.Range(0, 0, document.lineCount, 0)
+      edit.replace(document.uri, fullRange, newText)
+      await vscode.workspace.applyEdit(edit)
+    }
+    const commentsService = new CommentsService(
+      document.uri,
+      this.makeCommentBackend(document.uri),
+      undefined, // default genId
+      undefined, // default now
+      undefined, // default flushMs
+      () => document.getText(),
+      applyEdit,
+    )
+
     const deps: PreviewDeps = {
       post: (message) => void webview.postMessage(message),
       renderer,
@@ -246,15 +273,10 @@ export class ActivationController implements IActivationController, vscode.Custo
       cache: this.cache,
       settings: this.settings,
       exportService: new ExportService(),
-      commentsService: new CommentsService(document.uri),
+      commentsService,
       getDocumentText: () => document.getText(),
       getDocumentUri: () => document.uri,
-      applyEdit: async (newText) => {
-        const edit = new vscode.WorkspaceEdit()
-        const fullRange = new vscode.Range(0, 0, document.lineCount, 0)
-        edit.replace(document.uri, fullRange, newText)
-        await vscode.workspace.applyEdit(edit)
-      },
+      applyEdit,
       executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
       whenReady: () => this.ready,
     }
@@ -274,6 +296,18 @@ export class ActivationController implements IActivationController, vscode.Custo
         if (e.textEditor.document.uri.toString() === document.uri.toString()) {
           controller.onEditorScroll(e.visibleRanges[0]?.start.line ?? 0)
         }
+      }),
+      // Swap the comment backend + migrate ONLY when the backend TYPE actually
+      // changed, so unrelated settings changes (targetLanguage, provider, …) don't
+      // re-home comments. `constructor` equality holds when neither commentStorage
+      // nor the *effective* placement moved (e.g. placement change while storage is
+      // sidecar still yields SidecarBackend both times → correctly skipped).
+      this.settings.onDidChangeSettings(() => {
+        const next = this.makeCommentBackend(document.uri)
+        const prev = commentsService.currentBackend()
+        if (next.constructor === prev.constructor) return
+        commentsService.setBackend(next)
+        void commentsService.migrateFrom(prev).then(() => controller.onDocumentChange(document))
       }),
     ]
 
