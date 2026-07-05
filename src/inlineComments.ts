@@ -55,9 +55,13 @@ export function parseInline(source: string): CommentsFile {
   return { version: VERSION, docHash: '', threads }
 }
 
-/** One carrier block for a payload object. */
+/** One carrier block for a payload object. Escapes `<`/`>` in the JSON payload
+ *  (valid `<`/`>` string escapes, restored transparently by JSON.parse)
+ *  so the HTML-comment delimiters `<!--`/`-->` can NEVER appear inside a carrier
+ *  body — comment text may contain them verbatim without truncating the block. */
 function makeBlock(payload: object): string {
-  return `<!-- ${INLINE_MARKER}\n${JSON.stringify(payload, null, 2)}\n-->`
+  const json = JSON.stringify(payload, null, 2).replace(/</g, '\\u003c').replace(/>/g, '\\u003e')
+  return `<!-- ${INLINE_MARKER}\n${json}\n-->`
 }
 
 /** Strip old blocks, then append one block holding the whole CommentsFile. */

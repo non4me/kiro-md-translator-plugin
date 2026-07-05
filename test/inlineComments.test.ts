@@ -87,39 +87,56 @@ describe('serializeAfter', () => {
 })
 
 describe('inline carrier round-trip (property)', () => {
-  // Free text that can never contain the `-->` carrier terminator, so the JSON
-  // payload is never truncated (the delimiter is the one input a `-->`-delimited
-  // format cannot round-trip — see design Property 21).
-  const safeStr = fc.string({ minLength: 1 }).map((s) => s.replace(/-->/g, '__'))
+  // Raw strings — INCLUDING ones containing `-->`, `<!--`, `<`, `>`. makeBlock
+  // escapes `<`/`>` in the payload so the delimiters can never appear in a body,
+  // making the round-trip unconditional (design Property 21).
+  const genThread = fc.record({
+    anchor: fc.record({
+      quote: fc.string({ minLength: 1 }),
+      prefix: fc.constant(''),
+      suffix: fc.constant(''),
+      hintLine: fc.nat(),
+      quoteHash: fc.constant(''),
+    }),
+    orphaned: fc.constant(false),
+    comments: fc.array(
+      fc.record({
+        id: fc.string({ minLength: 1 }),
+        body: fc.string({ minLength: 1 }),
+        createdAt: fc.constant('2026-07-05T00:00:00Z'),
+        updatedAt: fc.constant('2026-07-05T00:00:00Z'),
+      }),
+      { minLength: 1, maxLength: 3 },
+    ),
+  })
+
+  const project = (threads: CommentThread[]) =>
+    threads.map((t) => ({ quote: t.anchor.quote, bodies: t.comments.map((c) => c.body) }))
 
   // Feature: kiro-md-translator-plugin, Property 21: inline carrier round-trips the comment set
-  it('Property 21: parseInline(serializeEof(...)) preserves the comment set', () => {
-    const genThread = fc.record({
-      anchor: fc.record({
-        quote: safeStr,
-        prefix: fc.constant(''),
-        suffix: fc.constant(''),
-        hintLine: fc.nat(),
-        quoteHash: fc.constant(''),
-      }),
-      orphaned: fc.constant(false),
-      comments: fc.array(
-        fc.record({
-          id: safeStr,
-          body: safeStr,
-          createdAt: fc.constant('2026-07-05T00:00:00Z'),
-          updatedAt: fc.constant('2026-07-05T00:00:00Z'),
-        }),
-        { minLength: 1, maxLength: 3 },
-      ),
-    })
+  it('Property 21: parseInline(serializeEof(...)) round-trips quotes and bodies exactly', () => {
     fc.assert(
       fc.property(fc.array(genThread, { maxLength: 4 }), (threads) => {
         const out = serializeEof('Doc body.\n', { version: 1, docHash: '', threads: threads as never })
         const back = parseInline(out).threads
-        expect(back.map((t) => t.comments.length)).toEqual(threads.map((t) => t.comments.length))
+        expect(project(back)).toEqual(project(threads as never))
       }),
-      { numRuns: 100 },
+      { numRuns: 200 },
     )
+  })
+
+  it('inline carrier survives a comment body containing --> and <!--', () => {
+    const t = {
+      anchor: { quote: 'Q --> end', prefix: '', suffix: '', hintLine: 0, quoteHash: '' },
+      orphaned: false,
+      comments: [{ id: 'c0', body: 'arrow --> and opener <!-- inside', createdAt: '', updatedAt: '' }],
+    }
+    const out = serializeEof('Body.\n', { version: 1, docHash: '', threads: [t as never] })
+    const back = parseInline(out).threads
+    expect(back).toHaveLength(1)
+    expect(back[0].comments[0].body).toBe('arrow --> and opener <!-- inside')
+    expect(back[0].anchor.quote).toBe('Q --> end')
+    // The adversarial delimiters in the body must not leave a stray carrier fragment.
+    expect(stripInlineComments(out)).toBe('Body.\n')
   })
 })
