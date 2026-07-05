@@ -114,7 +114,7 @@
           "kiro-md-translator.customEndpoint": {
             "type": "string",
             "default": "",
-            "markdownDescription": "**Custom** HTTP provider — [Set key](command:kiro-md-translator.setApiKey?%5B%22custom%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22custom%22%5D)\n\nBase URL for the endpoint. Ignored unless Provider Type is `custom`.\n\n---\n\n**API keys** are stored in the OS keychain, never in `settings.json`:\n\n- **DeepL** — [Set key](command:kiro-md-translator.setApiKey?%5B%22deepl%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22deepl%22%5D)\n- **Google** — [Set key](command:kiro-md-translator.setApiKey?%5B%22google%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22google%22%5D)"
+            "markdownDescription": "**API keys** are stored in the OS keychain, never in `settings.json`:\n\n- **DeepL** — [Set key](command:kiro-md-translator.setApiKey?%5B%22deepl%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22deepl%22%5D)\n- **Google** — [Set key](command:kiro-md-translator.setApiKey?%5B%22google%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22google%22%5D)\n\n---\n\n**Custom** HTTP provider — [Set key](command:kiro-md-translator.setApiKey?%5B%22custom%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22custom%22%5D)\n\nBase URL for the endpoint. Ignored unless Provider Type is `custom`."
           }
         }
       },
