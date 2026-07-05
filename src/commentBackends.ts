@@ -8,6 +8,7 @@
 import * as vscode from 'vscode'
 import type { Block, CommentThread, CommentsFile } from './types'
 import { parseCommentsFile, serializeCommentsFile, sidecarUri, type SidecarIO, fsIO } from './commentSidecar'
+import { parseInline, serializeEof, serializeAfter, stripInlineComments } from './inlineComments'
 
 export interface PersistCtx {
   data: CommentsFile
@@ -48,5 +49,28 @@ export class SidecarBackend implements CommentBackend {
     this.existed = false
     await this.io.remove(this.uri)
     return {}
+  }
+}
+
+export class InlineEofBackend implements CommentBackend {
+  async load(source: string): Promise<CommentsFile> { return parseInline(source) }
+  async persist(ctx: PersistCtx): Promise<PersistResult> {
+    return { kind: 'inline', newSource: serializeEof(ctx.source, ctx.data) }
+  }
+  async clear(source: string): Promise<{ newSource?: string }> {
+    return { newSource: stripInlineComments(source) }
+  }
+}
+
+export class InlineAfterBackend implements CommentBackend {
+  async load(source: string): Promise<CommentsFile> { return parseInline(source) }
+  async persist(ctx: PersistCtx): Promise<PersistResult> {
+    const newSource = ctx.data.threads.length === 0
+      ? stripInlineComments(ctx.source)
+      : serializeAfter(ctx.source, ctx.data, ctx.blocks, ctx.live)
+    return { kind: 'inline', newSource }
+  }
+  async clear(source: string): Promise<{ newSource?: string }> {
+    return { newSource: stripInlineComments(source) }
   }
 }
