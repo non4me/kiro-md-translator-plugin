@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest'
+import fc from 'fast-check'
 import { stripInlineComments, parseInline, INLINE_MARKER } from '../src/inlineComments'
 import { serializeEof, serializeAfter } from '../src/inlineComments'
 import type { Block, CommentThread } from '../src/types'
@@ -82,5 +83,43 @@ describe('serializeAfter', () => {
     const once = serializeAfter(src, file, blocks, live)
     const twice = serializeAfter(once, file, blocks, live)
     expect((twice.match(/rmt:comments/g) ?? []).length).toBe(1)
+  })
+})
+
+describe('inline carrier round-trip (property)', () => {
+  // Free text that can never contain the `-->` carrier terminator, so the JSON
+  // payload is never truncated (the delimiter is the one input a `-->`-delimited
+  // format cannot round-trip — see design Property 21).
+  const safeStr = fc.string({ minLength: 1 }).map((s) => s.replace(/-->/g, '__'))
+
+  // Feature: kiro-md-translator-plugin, Property 21: inline carrier round-trips the comment set
+  it('Property 21: parseInline(serializeEof(...)) preserves the comment set', () => {
+    const genThread = fc.record({
+      anchor: fc.record({
+        quote: safeStr,
+        prefix: fc.constant(''),
+        suffix: fc.constant(''),
+        hintLine: fc.nat(),
+        quoteHash: fc.constant(''),
+      }),
+      orphaned: fc.constant(false),
+      comments: fc.array(
+        fc.record({
+          id: safeStr,
+          body: safeStr,
+          createdAt: fc.constant('2026-07-05T00:00:00Z'),
+          updatedAt: fc.constant('2026-07-05T00:00:00Z'),
+        }),
+        { minLength: 1, maxLength: 3 },
+      ),
+    })
+    fc.assert(
+      fc.property(fc.array(genThread, { maxLength: 4 }), (threads) => {
+        const out = serializeEof('Doc body.\n', { version: 1, docHash: '', threads: threads as never })
+        const back = parseInline(out).threads
+        expect(back.map((t) => t.comments.length)).toEqual(threads.map((t) => t.comments.length))
+      }),
+      { numRuns: 100 },
+    )
   })
 })
