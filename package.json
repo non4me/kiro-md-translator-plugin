@@ -94,12 +94,24 @@
             ],
             "default": "deepl",
             "markdownDescription": "Translation provider.\n\n**API keys** — stored in the OS keychain, never in `settings.json`:\n\n- DeepL — [Set key](command:kiro-md-translator.setApiKey?%5B%22deepl%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22deepl%22%5D)\n- Google — [Set key](command:kiro-md-translator.setApiKey?%5B%22google%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22google%22%5D)\n- Custom — [Set key](command:kiro-md-translator.setApiKey?%5B%22custom%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22custom%22%5D)\n- Ollama (local, **no key**) — [Test connection](command:kiro-md-translator.testConnection?%5B%22ollama%22%5D)"
-          },
+          }
+        }
+      },
+      {
+        "title": "%config.section.providerCustom%",
+        "order": 2,
+        "properties": {
           "kiro-md-translator.customEndpoint": {
             "type": "string",
             "default": "",
             "markdownDescription": "Base URL for the **Custom** HTTP provider. Ignored unless Provider Type is `custom`."
-          },
+          }
+        }
+      },
+      {
+        "title": "%config.section.providerOllama%",
+        "order": 3,
+        "properties": {
           "kiro-md-translator.ollamaEndpoint": {
             "type": "string",
             "default": "http://localhost:11434",
@@ -114,7 +126,7 @@
       },
       {
         "title": "%config.section.languages%",
-        "order": 2,
+        "order": 4,
         "properties": {
           "kiro-md-translator.storageLanguage": {
             "type": "string",
@@ -130,7 +142,7 @@
       },
       {
         "title": "%config.section.translation%",
-        "order": 3,
+        "order": 5,
         "properties": {
           "kiro-md-translator.translationMode": {
             "type": "string",
@@ -156,7 +168,7 @@
       },
       {
         "title": "%config.section.comments%",
-        "order": 4,
+        "order": 6,
         "properties": {
           "kiro-md-translator.commentStorage": {
             "type": "string",
