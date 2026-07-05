@@ -2,6 +2,8 @@
 .kiro/**
 .ai_docs/**
 .claude/**
+# Internal AI design/plan artefacts — never part of the shipped extension.
+docs/superpowers/**
 src/**
 test/**
 node_modules/**
