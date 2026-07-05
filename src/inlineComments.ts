@@ -71,27 +71,67 @@ export function serializeEof(source: string, data: CommentsFile): string {
   return `${clean}\n\n${makeBlock({ version: data.version, threads: data.threads })}\n`
 }
 
-/** Single-pass rebuild: drop existing carrier blocks; after each block whose
- *  endLine has live thread(s), insert one carrier block per thread. Line indices
- *  are all against the CLEAN (comment-free) source, so no shifting bookkeeping. */
+/**
+ * Rebuild the source with each thread's carrier placed after its anchored block.
+ *
+ * `blocks` line ranges are measured against `source` AS GIVEN (the live document,
+ * which may already contain carriers), so we walk `source` in its own coordinates —
+ * indexing a stripped copy with live coordinates is what silently dropped comments
+ * that sat below an existing carrier.
+ *
+ * INVARIANT (data integrity): every thread in `data.threads` is persisted exactly
+ * once. A thread is placed after its block when that block is present with an
+ * in-range endLine; otherwise (orphaned, unmatched paragraphIndex, or a stale/
+ * out-of-range endLine) it is appended as an end-of-file carrier. Nothing is dropped.
+ */
 export function serializeAfter(
   source: string,
   data: CommentsFile,
   blocks: Block[],
   live: Map<number, CommentThread[]>,
 ): string {
-  const clean = stripInlineComments(source)
-  const lines = clean.split('\n')
+  const lines = source.split('\n')
+  const isCarrierStart = (s: string) => /^[ \t]*<!--[ \t]*rmt:comments\b/.test(s)
+
+  // Mark lines occupied by existing carriers (+ the single blank line before each)
+  // so re-serializing strips the old carriers before re-inserting fresh ones.
+  const drop = new Array<boolean>(lines.length).fill(false)
+  for (let i = 0; i < lines.length; i++) {
+    if (!isCarrierStart(lines[i])) continue
+    let j = i
+    while (j < lines.length && !lines[j].includes('-->')) j++
+    for (let k = i; k <= j && k < lines.length; k++) drop[k] = true
+    if (i > 0 && lines[i - 1].trim() === '') drop[i - 1] = true
+    i = j
+  }
+
+  // Placeable threads → their block's (in-range) endLine. Accumulate so two blocks
+  // sharing an endLine both get a carrier (last-write-wins would drop one).
   const byEnd = new Map<number, CommentThread[]>()
   for (const b of blocks) {
+    if (b.endLine < 0 || b.endLine >= lines.length) continue
     const threads = live.get(b.paragraphIndex)
-    if (threads && threads.length) byEnd.set(b.endLine, threads)
+    if (!threads || !threads.length) continue
+    const arr = byEnd.get(b.endLine) ?? []
+    for (const t of threads) arr.push(t)
+    byEnd.set(b.endLine, arr)
   }
+
+  // Walk in source coordinates; drop old carriers; emit fresh carriers after each
+  // block's endLine. Track what actually got emitted (a byEnd entry keyed to a
+  // dropped line is never emitted here — it must fall through to the EOF fallback).
   const out: string[] = []
+  const placed = new Set<CommentThread>()
   for (let i = 0; i < lines.length; i++) {
+    if (drop[i]) continue
     out.push(lines[i])
     const threads = byEnd.get(i)
-    if (threads) for (const t of threads) out.push('', makeBlock({ threads: [t] }))
+    if (threads) for (const t of threads) { out.push('', makeBlock({ threads: [t] })); placed.add(t) }
+  }
+
+  // Never drop: any authoritative thread not placed after a block goes to EOF.
+  for (const t of data.threads) {
+    if (!placed.has(t)) out.push('', makeBlock({ threads: [t] }))
   }
   return out.join('\n')
 }
