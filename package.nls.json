@@ -1,5 +1,6 @@
 {
   "config.section.provider": "Provider",
+  "config.section.providerSettings": "Provider settings",
   "config.section.languages": "Languages",
   "config.section.translation": "Translation",
   "config.section.comments": "Comments"

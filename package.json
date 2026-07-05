@@ -93,8 +93,14 @@
               "Local Ollama server (set Ollama Endpoint and Model below). No API key required."
             ],
             "default": "deepl",
-            "markdownDescription": "Translation provider.\n\n**API keys** are stored in the OS keychain, never in `settings.json`:\n\n- DeepL — [Set key](command:kiro-md-translator.setApiKey?%5B%22deepl%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22deepl%22%5D)\n- Google — [Set key](command:kiro-md-translator.setApiKey?%5B%22google%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22google%22%5D)"
-          },
+            "markdownDescription": "The translation service to use. Per-provider connection settings and API keys are in **Provider settings** below."
+          }
+        }
+      },
+      {
+        "title": "%config.section.providerSettings%",
+        "order": 2,
+        "properties": {
           "kiro-md-translator.ollamaEndpoint": {
             "type": "string",
             "default": "http://localhost:11434",
@@ -108,13 +114,13 @@
           "kiro-md-translator.customEndpoint": {
             "type": "string",
             "default": "",
-            "markdownDescription": "**Custom** HTTP provider — [Set key](command:kiro-md-translator.setApiKey?%5B%22custom%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22custom%22%5D)\n\nBase URL for the endpoint. Ignored unless Provider Type is `custom`."
+            "markdownDescription": "**Custom** HTTP provider — [Set key](command:kiro-md-translator.setApiKey?%5B%22custom%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22custom%22%5D)\n\nBase URL for the endpoint. Ignored unless Provider Type is `custom`.\n\n---\n\n**API keys** are stored in the OS keychain, never in `settings.json`:\n\n- **DeepL** — [Set key](command:kiro-md-translator.setApiKey?%5B%22deepl%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22deepl%22%5D)\n- **Google** — [Set key](command:kiro-md-translator.setApiKey?%5B%22google%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22google%22%5D)"
           }
         }
       },
       {
         "title": "%config.section.languages%",
-        "order": 2,
+        "order": 3,
         "properties": {
           "kiro-md-translator.storageLanguage": {
             "type": "string",
@@ -130,7 +136,7 @@
       },
       {
         "title": "%config.section.translation%",
-        "order": 3,
+        "order": 4,
         "properties": {
           "kiro-md-translator.translationMode": {
             "type": "string",
@@ -156,7 +162,7 @@
       },
       {
         "title": "%config.section.comments%",
-        "order": 4,
+        "order": 5,
         "properties": {
           "kiro-md-translator.commentStorage": {
             "type": "string",
