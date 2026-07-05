@@ -307,7 +307,8 @@ export class ActivationController implements IActivationController, vscode.Custo
         const prev = commentsService.currentBackend()
         if (next.constructor === prev.constructor) return
         commentsService.setBackend(next)
-        void commentsService.migrateFrom(prev).then(() => controller.onDocumentChange(document))
+        // migrateFrom's writeSource already fires onDidChangeTextDocument; this guarantees a UI refresh even when migration produced no text change (empty comment set).
+        void commentsService.migrateFrom(prev).then(() => controller.onDocumentChange(document)).catch(() => {})
       }),
     ]
 

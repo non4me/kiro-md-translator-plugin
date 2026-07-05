@@ -53,6 +53,44 @@ describe('comment migration', () => {
     expect(store.size).toBe(1) // sidecar written
   })
 
+  it('empty comment set: sidecar → inline(after) is a no-op (no carrier, no sidecar, no throw)', async () => {
+    const { io, store } = memIO()
+    let source = `Alpha.\n\nBeta.`
+    const original = source
+    const svc = new CommentsService(docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t })
+    await svc.load()
+    svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
+    // no comments added
+    const prev = svc.currentBackend()
+    svc.setBackend(new InlineAfterBackend())
+    await svc.migrateFrom(prev)
+    expect(source).toBe(original) // byte-identical: no carrier written
+    expect(source).not.toContain('rmt:comments')
+    expect(store.size).toBe(0) // no sidecar created
+  })
+
+  it('sidecar → inline(eof): sidecar removed, carrier appended at end-of-file', async () => {
+    const { io, store } = memIO()
+    let source = `Alpha.\n\nBeta.`
+    const svc = new CommentsService(docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t })
+    await svc.load()
+    svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
+    svc.addComment(1, 'note')
+    await svc.flush() // writes sidecar
+    expect(store.size).toBe(1)
+    const prev = svc.currentBackend()
+    svc.setBackend(new InlineEofBackend())
+    await svc.migrateFrom(prev)
+    expect(store.size).toBe(0) // sidecar cleared
+    expect(source).toContain('<!-- rmt:comments')
+    expect(source.indexOf('Beta.')).toBeLessThan(source.indexOf('rmt:comments')) // carrier AFTER last paragraph
+    expect(source.trimEnd().endsWith('-->')).toBe(true) // at end-of-file
+    expect((source.match(/rmt:comments/g) ?? []).length).toBe(1)
+    const parsed = parseInline(source)
+    expect(parsed.threads).toHaveLength(1)
+    expect(parsed.threads[0].comments[0].body).toBe('note')
+  })
+
   it('inline(after) → inline(eof): carrier MOVES to EOF, not wiped', async () => {
     let source = `Alpha.\n\nBeta.`
     const svc = new CommentsService(docUri, new InlineAfterBackend(), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t })

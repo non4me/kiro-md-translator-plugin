@@ -17,10 +17,12 @@ export interface PersistCtx {
   live: Map<number, CommentThread[]>
 }
 
-export type PersistResult = { kind: 'sidecar' } | { kind: 'inline'; newSource: string }
+export type StorageMedium = 'sidecar' | 'inline'
+
+export type PersistResult = { kind: StorageMedium & 'sidecar' } | { kind: StorageMedium & 'inline'; newSource: string }
 
 export interface CommentBackend {
-  readonly medium: 'sidecar' | 'inline'
+  readonly medium: StorageMedium
   load(source: string): Promise<CommentsFile>
   persist(ctx: PersistCtx): Promise<PersistResult>
   clear(source: string): Promise<{ newSource?: string }>
