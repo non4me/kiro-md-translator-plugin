@@ -14,6 +14,7 @@ import {
 } from './types'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { TranslationEngine } from './TranslationEngine'
+import { stripInlineComments } from './inlineComments'
 import { t } from './l10n'
 
 const RENDER_DEBOUNCE_MS = 300
@@ -404,8 +405,12 @@ export class PreviewController implements IPreviewController {
     const cfg = this.deps.settings.getConfig()
     if (!cfg.targetLanguage) return
     const ac = new AbortController()
+    // Export must produce a CLEAN translated file: inline comment carriers
+    // (<!-- rmt:comments … -->) are stripped before translating so they never
+    // reach the exported document.
+    const cleanSource = stripInlineComments(this.sourceText)
     const md = await this.deps.engine.translateToMarkdown(
-      this.sourceText,
+      cleanSource,
       cfg.storageLanguage,
       cfg.targetLanguage,
       ac.signal,
