@@ -1,8 +1,9 @@
 /**
- * Block-anchored comment store (req 11). Owns the `<name>.comments.json` sidecar
- * and the content re-anchoring; the `.md` original is NEVER written here. IO is an
- * injected seam (`SidecarIO`, default `vscode.workspace.fs`) so the service is
- * unit-testable in-memory. The pure anchoring logic lives in `./anchoring`.
+ * Block-anchored comment store (req 11). Owns the content re-anchoring, live-map,
+ * and debounce; the *where/how* of persistence lives behind a `CommentBackend`
+ * (default `SidecarBackend`, which owns the `<name>.comments.json` sidecar). The
+ * `.md` original is NEVER written here in sidecar mode. The pure anchoring logic
+ * lives in `./anchoring`; the sidecar file format in `./commentSidecar`.
  */
 import * as vscode from 'vscode'
 import type {
@@ -15,113 +16,17 @@ import type {
   ReanchorResult,
 } from './types'
 import { hashString, makeAnchor, matchThread } from './anchoring'
+import { VERSION } from './commentSidecar'
+import { SidecarBackend, type CommentBackend } from './commentBackends'
 
-const SIDE_SUFFIX = '.comments.json'
-const VERSION = 1
+// Re-export the sidecar primitives so existing import paths keep working.
+export { parseCommentsFile, serializeCommentsFile, sidecarUri, fsIO } from './commentSidecar'
+export type { SidecarIO } from './commentSidecar'
+
 const FLUSH_MS = 500
-
-/** File IO seam. `read` returns undefined when the sidecar does not exist yet;
- *  `remove` deletes it (tolerant of an already-missing file). */
-export interface SidecarIO {
-  read(uri: vscode.Uri): Promise<string | undefined>
-  write(uri: vscode.Uri, content: string): Promise<void>
-  remove(uri: vscode.Uri): Promise<void>
-}
-
-/** Default IO backed by the workspace filesystem; a missing file reads as undefined. */
-const fsIO: SidecarIO = {
-  async read(uri) {
-    try {
-      return new TextDecoder().decode(await vscode.workspace.fs.readFile(uri))
-    } catch {
-      return undefined
-    }
-  },
-  async write(uri, content) {
-    await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(content))
-  },
-  async remove(uri) {
-    try {
-      await vscode.workspace.fs.delete(uri)
-    } catch {
-      // already gone — deleting the last comment when no file exists is a no-op.
-    }
-  },
-}
 
 function defaultId(): string {
   return 'c_' + Math.random().toString(36).slice(2, 8)
-}
-
-/** `docs/api.md` → `docs/api.md.comments.json` (sidecar next to the file). */
-export function sidecarUri(docUri: vscode.Uri): vscode.Uri {
-  const dir = vscode.Uri.joinPath(docUri, '..')
-  const name = docUri.path.split('/').pop() || 'document.md'
-  return vscode.Uri.joinPath(dir, `${name}${SIDE_SUFFIX}`)
-}
-
-function isValidComment(c: unknown): c is Comment {
-  if (typeof c !== 'object' || c === null) return false
-  const o = c as Record<string, unknown>
-  return (
-    typeof o.id === 'string' &&
-    typeof o.body === 'string' &&
-    typeof o.createdAt === 'string' &&
-    typeof o.updatedAt === 'string'
-  )
-}
-
-function isValidThread(t: unknown): t is CommentThread {
-  if (typeof t !== 'object' || t === null) return false
-  const o = t as Record<string, unknown>
-  const a = o.anchor as Record<string, unknown> | undefined
-  return (
-    !!a &&
-    typeof a.quote === 'string' &&
-    Array.isArray(o.comments) &&
-    o.comments.every(isValidComment)
-  )
-}
-
-/** Serialize the sidecar (pretty JSON, stable key order). Pure — round-trips with parse. */
-export function serializeCommentsFile(data: CommentsFile): string {
-  return JSON.stringify(data, null, 2)
-}
-
-/** Coerce a validated thread's anchor to safe types. `isValidThread` only checks
- *  `quote`; the re-anchoring math assumes `prefix`/`suffix` are strings and
- *  `hintLine` a number, so an untrusted sidecar that omits them (or gives wrong
- *  types) must be normalized here — otherwise `diceSimilarity` throws on
- *  `undefined.length` when a block has ≥2 anchor candidates. */
-function normalizeThread(t: CommentThread): CommentThread {
-  const a = t.anchor as unknown as Record<string, unknown>
-  return {
-    anchor: {
-      quote: typeof a.quote === 'string' ? a.quote : '',
-      prefix: typeof a.prefix === 'string' ? a.prefix : '',
-      suffix: typeof a.suffix === 'string' ? a.suffix : '',
-      hintLine: typeof a.hintLine === 'number' && Number.isFinite(a.hintLine) ? a.hintLine : 0,
-      quoteHash: typeof a.quoteHash === 'string' ? a.quoteHash : '',
-    },
-    orphaned: Boolean(t.orphaned),
-    comments: t.comments,
-  }
-}
-
-/** Tolerant parse: unknown/malformed input yields an empty store (never throws). */
-export function parseCommentsFile(raw: string | undefined): CommentsFile {
-  if (!raw) return { version: VERSION, docHash: '', threads: [] }
-  try {
-    const obj = JSON.parse(raw) as Partial<CommentsFile>
-    const threads = Array.isArray(obj.threads)
-      ? obj.threads
-          .filter((t): t is CommentThread => isValidThread(t) && t.comments.length > 0)
-          .map(normalizeThread)
-      : []
-    return { version: VERSION, docHash: typeof obj.docHash === 'string' ? obj.docHash : '', threads }
-  } catch {
-    return { version: VERSION, docHash: '', threads: [] }
-  }
 }
 
 export class CommentsService implements ICommentsService {
@@ -133,24 +38,19 @@ export class CommentsService implements ICommentsService {
   private flushTimer: ReturnType<typeof setTimeout> | undefined
   /** True once a comment was added/edited/deleted this session. */
   private dirty = false
-  /** True if a sidecar already existed on disk when loaded. */
-  private existed = false
-  private readonly uri: vscode.Uri
 
   constructor(
     docUri: vscode.Uri,
-    private readonly io: SidecarIO = fsIO,
+    private backend: CommentBackend = new SidecarBackend(docUri),
     private readonly genId: () => string = defaultId,
     private readonly now: () => string = () => new Date().toISOString(),
     private readonly flushMs: number = FLUSH_MS,
-  ) {
-    this.uri = sidecarUri(docUri)
-  }
+    private readonly getSource: () => string = () => '',
+    private readonly writeSource?: (text: string) => Promise<void>,
+  ) {}
 
   async load(): Promise<void> {
-    const raw = await this.io.read(this.uri)
-    this.existed = raw !== undefined
-    this.data = parseCommentsFile(raw)
+    this.data = await this.backend.load(this.getSource())
   }
 
   /**
@@ -258,26 +158,27 @@ export class CommentsService implements ICommentsService {
   }
 
   /** Persist now, cancelling any pending debounce; stamps `docHash` to the current
-   *  source so a later unchanged-document open takes the hintLine fast-path. When no
-   *  comments remain, the sidecar is DELETED (deleting the last comment removes the
-   *  file rather than leaving an empty `{threads:[]}` behind); when none ever existed
-   *  and nothing changed, it does nothing — opening/closing never litters a file. */
-  flush(): Thenable<void> {
+   *  source so a later unchanged-document open takes the hintLine fast-path. The
+   *  removal-when-empty semantics (deleting the last comment removes the sidecar
+   *  rather than leaving `{threads:[]}` behind; opening/closing never litters a
+   *  file) live in the backend. An inline backend may return rewritten source to
+   *  write back via `writeSource`. */
+  async flush(): Promise<void> {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer)
       this.flushTimer = undefined
     }
-    if (this.data.threads.length === 0) {
-      if (this.existed || this.dirty) {
-        this.existed = false
-        this.dirty = false
-        return this.io.remove(this.uri)
-      }
-      return Promise.resolve()
+    if (this.data.threads.length > 0) this.data.docHash = hashString(this.lastSource)
+    const res = await this.backend.persist({
+      data: this.data,
+      source: this.getSource(),
+      blocks: this.lastBlocks,
+      live: this.live,
+    })
+    if (res.kind === 'inline' && this.writeSource && res.newSource !== this.getSource()) {
+      await this.writeSource(res.newSource)
     }
-    this.data.docHash = hashString(this.lastSource)
-    this.existed = true
-    return this.io.write(this.uri, serializeCommentsFile(this.data))
+    this.dirty = false
   }
 
   private stampAndFlush(): void {

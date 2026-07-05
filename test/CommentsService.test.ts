@@ -8,6 +8,7 @@ import {
   sidecarUri,
   type SidecarIO,
 } from '../src/CommentsService'
+import { SidecarBackend } from '../src/commentBackends'
 import type { Block, CommentsFile } from '../src/types'
 
 const docUri = vscode.Uri.parse('file:///doc/api.md') as never
@@ -39,7 +40,7 @@ function blocksFrom(texts: string[]): Block[] {
 
 /** flushMs large so the debounce never fires mid-test; tests call flush() explicitly. */
 function svc(io: SidecarIO, ids: () => string = (() => { let n = 0; return () => `c${n++}` })()) {
-  return new CommentsService(docUri, io, ids, () => '2026-07-04T00:00:00Z', 1_000_000)
+  return new CommentsService(docUri, new SidecarBackend(docUri, io), ids, () => '2026-07-04T00:00:00Z', 1_000_000)
 }
 
 describe('sidecar (de)serialization', () => {
