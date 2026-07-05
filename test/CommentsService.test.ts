@@ -21,6 +21,9 @@ function memIO() {
     async write(uri, content) {
       store.set(String(uri), content)
     },
+    async remove(uri) {
+      store.delete(String(uri))
+    },
   }
   return { io, store }
 }
@@ -174,6 +177,19 @@ describe('CommentsService', () => {
     s.reanchor(blocksFrom(['Untouched paragraph']), 'Untouched paragraph')
     await s.flush() // simulates PreviewController.dispose() with no comments added
     expect(store.size).toBe(0) // nothing was written to disk
+  })
+
+  it('flush() removes the sidecar once the last comment is deleted', async () => {
+    const { io, store } = memIO()
+    const s = svc(io)
+    await s.load()
+    s.reanchor(blocksFrom(['Block one']), 'Block one')
+    const c = s.addComment(0, 'first')!
+    await s.flush()
+    expect(store.has(String(sidecarUri(docUri)))).toBe(true) // written while it has a comment
+    s.deleteComment(c.id)
+    await s.flush()
+    expect(store.has(String(sidecarUri(docUri)))).toBe(false) // deleted, not left empty
   })
 
   it('re-anchors an untrusted sidecar with under-specified anchor fields without throwing', async () => {

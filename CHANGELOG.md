@@ -3,6 +3,16 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.4.10] — 2026-07-05
+
+### Changed
+
+- **Comment sidecar renamed and cleaned up.** The per-file comment store is now `<name>.comments.json`
+  (previously the dot-prefixed `.<name>.comments.json`). Deleting the last comment on a file now removes
+  the sidecar entirely instead of leaving an empty one behind.
+
+[0.4.10]: #0410--2026-07-05
+
 ## [0.4.9] — 2026-07-05
 
 ### Fixed

@@ -51,7 +51,7 @@ export interface PluginConfig {
 
 // ---------------------------------------------------------------------------
 // Comments (req 11) — a block-anchored, sidecar-stored annotation layer.
-// Comments are NEVER part of the .md; they live in `.<name>.comments.json`.
+// Comments are NEVER part of the .md; they live in `<name>.comments.json`.
 // ---------------------------------------------------------------------------
 
 /** A block of the current document, in document order (built from the lineMap). */

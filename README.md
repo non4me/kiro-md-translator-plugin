@@ -16,7 +16,7 @@ right). The file on disk always stays in the **Storage language** (default Engli
 - **Bilingual view** — a two-column toggle showing source and translation side by side with paragraph-synced scrolling.
 - **Glossary** — do-not-translate terms (product names, identifiers) kept verbatim and never sent to the translation API; add the current selection to it by right-clicking in a Markdown editor → *Exclude Selection from Translation*.
 - **Persistent translation memory** — translations are remembered across IDE sessions, so reopening a file does not re-spend API quota on already-translated text.
-- **Comments** — annotate any block without touching the `.md`; comments live in a hidden sidecar and re-anchor to their block when the original is edited.
+- **Comments** — annotate any block without touching the `.md`; comments live in a sidecar file and re-anchor to their block when the original is edited.
 - Hover any block to see the reverse translation; edit a paragraph (original ↔ translation auto-sync) and save it back.
 - Export the translated document as `{name}.{lang}.md`.
 - Two-tier cache: an in-session LRU (50 entries) over the persistent memory; code, inline code and URLs are never sent to the translation API.
@@ -55,8 +55,8 @@ Add comments to any block without modifying the `.md` file. Hover a paragraph an
 (next to *Edit*), or click the **💬** indicator that appears next to a block that already has comments —
 hovering the indicator previews the thread, clicking it opens a modal to add, edit, or delete comments.
 
-Comments are stored in a hidden sidecar next to the file (`docs/api.md` → `docs/.api.md.comments.json`)
-— never inside the Markdown. Whether you commit that sidecar to git is your call (the extension does not
+Comments are stored in a sidecar next to the file (`docs/api.md` → `docs/api.md.comments.json`)
+— never inside the Markdown; deleting the last comment on a file removes the sidecar. Whether you commit that sidecar to git is your call (the extension does not
 add any `.gitignore` rule). Each comment is anchored to its block's **content**, so editing the original
 — even while the preview is closed — re-anchors the comment to the same block. If a commented block is
 deleted, its comments are shown under **Outdated comments** rather than lost or moved to the wrong block.

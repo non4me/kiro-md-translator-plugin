@@ -1,5 +1,5 @@
 /**
- * Block-anchored comment store (req 11). Owns the `.<name>.comments.json` sidecar
+ * Block-anchored comment store (req 11). Owns the `<name>.comments.json` sidecar
  * and the content re-anchoring; the `.md` original is NEVER written here. IO is an
  * injected seam (`SidecarIO`, default `vscode.workspace.fs`) so the service is
  * unit-testable in-memory. The pure anchoring logic lives in `./anchoring`.
@@ -20,10 +20,12 @@ const SIDE_SUFFIX = '.comments.json'
 const VERSION = 1
 const FLUSH_MS = 500
 
-/** File IO seam. `read` returns undefined when the sidecar does not exist yet. */
+/** File IO seam. `read` returns undefined when the sidecar does not exist yet;
+ *  `remove` deletes it (tolerant of an already-missing file). */
 export interface SidecarIO {
   read(uri: vscode.Uri): Promise<string | undefined>
   write(uri: vscode.Uri, content: string): Promise<void>
+  remove(uri: vscode.Uri): Promise<void>
 }
 
 /** Default IO backed by the workspace filesystem; a missing file reads as undefined. */
@@ -38,17 +40,24 @@ const fsIO: SidecarIO = {
   async write(uri, content) {
     await vscode.workspace.fs.writeFile(uri, new TextEncoder().encode(content))
   },
+  async remove(uri) {
+    try {
+      await vscode.workspace.fs.delete(uri)
+    } catch {
+      // already gone — deleting the last comment when no file exists is a no-op.
+    }
+  },
 }
 
 function defaultId(): string {
   return 'c_' + Math.random().toString(36).slice(2, 8)
 }
 
-/** `docs/api.md` → `docs/.api.md.comments.json` (hidden sidecar next to the file). */
+/** `docs/api.md` → `docs/api.md.comments.json` (sidecar next to the file). */
 export function sidecarUri(docUri: vscode.Uri): vscode.Uri {
   const dir = vscode.Uri.joinPath(docUri, '..')
   const name = docUri.path.split('/').pop() || 'document.md'
-  return vscode.Uri.joinPath(dir, `.${name}${SIDE_SUFFIX}`)
+  return vscode.Uri.joinPath(dir, `${name}${SIDE_SUFFIX}`)
 }
 
 function isValidComment(c: unknown): c is Comment {
@@ -249,18 +258,25 @@ export class CommentsService implements ICommentsService {
   }
 
   /** Persist now, cancelling any pending debounce; stamps `docHash` to the current
-   *  source so a later unchanged-document open takes the hintLine fast-path. Writes
-   *  NOTHING when there is nothing to persist and no sidecar existed — so merely
-   *  opening and closing a preview never litters the workspace with an empty file. */
+   *  source so a later unchanged-document open takes the hintLine fast-path. When no
+   *  comments remain, the sidecar is DELETED (deleting the last comment removes the
+   *  file rather than leaving an empty `{threads:[]}` behind); when none ever existed
+   *  and nothing changed, it does nothing — opening/closing never litters a file. */
   flush(): Thenable<void> {
     if (this.flushTimer) {
       clearTimeout(this.flushTimer)
       this.flushTimer = undefined
     }
-    if (this.data.threads.length === 0 && !this.dirty && !this.existed) {
+    if (this.data.threads.length === 0) {
+      if (this.existed || this.dirty) {
+        this.existed = false
+        this.dirty = false
+        return this.io.remove(this.uri)
+      }
       return Promise.resolve()
     }
     this.data.docHash = hashString(this.lastSource)
+    this.existed = true
     return this.io.write(this.uri, serializeCommentsFile(this.data))
   }
 
