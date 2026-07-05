@@ -19,7 +19,7 @@ export interface PersistCtx {
 
 export type StorageMedium = 'sidecar' | 'inline'
 
-export type PersistResult = { kind: StorageMedium & 'sidecar' } | { kind: StorageMedium & 'inline'; newSource: string }
+export type PersistResult = { kind: 'sidecar' } | { kind: 'inline'; newSource: string }
 
 export interface CommentBackend {
   readonly medium: StorageMedium
