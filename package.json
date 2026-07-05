@@ -2,7 +2,7 @@
   "name": "kiro-md-translator-plugin",
   "displayName": "Read Markdown Translator",
   "description": "Rendered Markdown preview with synchronous translation for the Kiro/VS Code IDE.",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "icon": "media/icon.png",
   "publisher": "VladimirTroyanenko",
   "license": "MIT",
@@ -166,6 +166,7 @@
         "properties": {
           "kiro-md-translator.commentStorage": {
             "type": "string",
+            "order": 1,
             "enum": [
               "sidecar",
               "inline"
@@ -183,6 +184,7 @@
           },
           "kiro-md-translator.commentPlacement": {
             "type": "string",
+            "order": 2,
             "enum": [
               "after-paragraph",
               "end-of-file"
