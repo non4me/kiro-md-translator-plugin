@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest'
 import * as vscode from './mocks/vscode'
 import { SidecarBackend } from '../src/commentBackends'
-import type { SidecarIO } from '../src/CommentsService'
+import type { SidecarIO } from '../src/commentSidecar'
 import type { CommentsFile } from '../src/types'
 
 const docUri = vscode.Uri.parse('file:///doc/api.md') as never

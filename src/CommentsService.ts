@@ -36,8 +36,6 @@ export class CommentsService implements ICommentsService {
   /** paragraphIndex → the live threads resolved there (usually one). */
   private live = new Map<number, CommentThread[]>()
   private flushTimer: ReturnType<typeof setTimeout> | undefined
-  /** True once a comment was added/edited/deleted this session. */
-  private dirty = false
 
   constructor(
     docUri: vscode.Uri,
@@ -178,11 +176,9 @@ export class CommentsService implements ICommentsService {
     if (res.kind === 'inline' && this.writeSource && res.newSource !== this.getSource()) {
       await this.writeSource(res.newSource)
     }
-    this.dirty = false
   }
 
   private stampAndFlush(): void {
-    this.dirty = true
     if (this.flushTimer) clearTimeout(this.flushTimer)
     this.flushTimer = setTimeout(() => void this.flush(), this.flushMs)
   }
