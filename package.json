@@ -73,73 +73,120 @@
         }
       ]
     },
-    "configuration": {
-      "title": "Read Markdown Translator",
-      "properties": {
-        "kiro-md-translator.providerType": {
-          "type": "string",
-          "enum": [
-            "deepl",
-            "google",
-            "custom",
-            "ollama"
-          ],
-          "enumDescriptions": [
-            "DeepL API (Free or Pro).",
-            "Google Cloud Translation API.",
-            "Custom HTTP endpoint (set Custom Endpoint below).",
-            "Local Ollama server (set Ollama Endpoint and Model below). No API key required."
-          ],
-          "default": "deepl",
-          "markdownDescription": "Translation provider.\n\n**API keys** — stored in the OS keychain, never in `settings.json`:\n\n- DeepL — [Set key](command:kiro-md-translator.setApiKey?%5B%22deepl%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22deepl%22%5D)\n- Google — [Set key](command:kiro-md-translator.setApiKey?%5B%22google%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22google%22%5D)\n- Custom — [Set key](command:kiro-md-translator.setApiKey?%5B%22custom%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22custom%22%5D)\n- Ollama (local, **no key**) — [Test connection](command:kiro-md-translator.testConnection?%5B%22ollama%22%5D)"
-        },
-        "kiro-md-translator.customEndpoint": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Base URL for the **Custom** HTTP provider. Ignored unless Provider Type is `custom`."
-        },
-        "kiro-md-translator.ollamaEndpoint": {
-          "type": "string",
-          "default": "http://localhost:11434",
-          "markdownDescription": "Base URL of the local **Ollama** server. Ignored unless Provider Type is `ollama`. `http://` is allowed for localhost."
-        },
-        "kiro-md-translator.ollamaModel": {
-          "type": "string",
-          "default": "llama3.1",
-          "markdownDescription": "Ollama model used for translation (must be pulled locally, e.g. `ollama pull llama3.1`). Ignored unless Provider Type is `ollama`."
-        },
-        "kiro-md-translator.glossary": {
-          "type": "array",
-          "items": {
-            "type": "string"
+    "configuration": [
+      {
+        "title": "%config.section.provider%",
+        "order": 1,
+        "properties": {
+          "kiro-md-translator.providerType": {
+            "type": "string",
+            "enum": [
+              "deepl",
+              "google",
+              "custom",
+              "ollama"
+            ],
+            "enumDescriptions": [
+              "DeepL API (Free or Pro).",
+              "Google Cloud Translation API.",
+              "Custom HTTP endpoint (set Custom Endpoint below).",
+              "Local Ollama server (set Ollama Endpoint and Model below). No API key required."
+            ],
+            "default": "deepl",
+            "markdownDescription": "Translation provider.\n\n**API keys** — stored in the OS keychain, never in `settings.json`:\n\n- DeepL — [Set key](command:kiro-md-translator.setApiKey?%5B%22deepl%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22deepl%22%5D)\n- Google — [Set key](command:kiro-md-translator.setApiKey?%5B%22google%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22google%22%5D)\n- Custom — [Set key](command:kiro-md-translator.setApiKey?%5B%22custom%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22custom%22%5D)\n- Ollama (local, **no key**) — [Test connection](command:kiro-md-translator.testConnection?%5B%22ollama%22%5D)"
           },
-          "default": [],
-          "markdownDescription": "Do-not-translate terms (product names, identifiers, brands). Each term is kept **verbatim** in the translated output and is never sent as translatable text to the provider."
-        },
-        "kiro-md-translator.storageLanguage": {
-          "type": "string",
-          "default": "en",
-          "markdownDescription": "Language the file is stored in on disk (the translation source). Use a **base** language code, e.g. `en`, `de`, `ru` — regional variants like `en-US` are not valid as a source."
-        },
-        "kiro-md-translator.targetLanguage": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "Language to display translations in. Leave empty to disable translation. Regional codes are allowed here, e.g. `en-US`, `pt-BR`."
-        },
-        "kiro-md-translator.translationMode": {
-          "type": "string",
-          "enum": [
-            "on-demand",
-            "automatic"
-          ],
-          "enumDescriptions": [
-            "Translate only when you click the Translate button.",
-            "Translate automatically on open and on every edit."
-          ],
-          "default": "on-demand"
+          "kiro-md-translator.customEndpoint": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Base URL for the **Custom** HTTP provider. Ignored unless Provider Type is `custom`."
+          },
+          "kiro-md-translator.ollamaEndpoint": {
+            "type": "string",
+            "default": "http://localhost:11434",
+            "markdownDescription": "Base URL of the local **Ollama** server. Ignored unless Provider Type is `ollama`. `http://` is allowed for localhost."
+          },
+          "kiro-md-translator.ollamaModel": {
+            "type": "string",
+            "default": "llama3.1",
+            "markdownDescription": "Ollama model used for translation (must be pulled locally, e.g. `ollama pull llama3.1`). Ignored unless Provider Type is `ollama`."
+          }
+        }
+      },
+      {
+        "title": "%config.section.languages%",
+        "order": 2,
+        "properties": {
+          "kiro-md-translator.storageLanguage": {
+            "type": "string",
+            "default": "en",
+            "markdownDescription": "Language the file is stored in on disk (the translation source). Use a **base** language code, e.g. `en`, `de`, `ru` — regional variants like `en-US` are not valid as a source."
+          },
+          "kiro-md-translator.targetLanguage": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "Language to display translations in. Leave empty to disable translation. Regional codes are allowed here, e.g. `en-US`, `pt-BR`."
+          }
+        }
+      },
+      {
+        "title": "%config.section.translation%",
+        "order": 3,
+        "properties": {
+          "kiro-md-translator.translationMode": {
+            "type": "string",
+            "enum": [
+              "on-demand",
+              "automatic"
+            ],
+            "enumDescriptions": [
+              "Translate only when you click the Translate button.",
+              "Translate automatically on open and on every edit."
+            ],
+            "default": "on-demand"
+          },
+          "kiro-md-translator.glossary": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "markdownDescription": "Do-not-translate terms (product names, identifiers, brands). Each term is kept **verbatim** in the translated output and is never sent as translatable text to the provider."
+          }
+        }
+      },
+      {
+        "title": "%config.section.comments%",
+        "order": 4,
+        "properties": {
+          "kiro-md-translator.commentStorage": {
+            "type": "string",
+            "enum": [
+              "sidecar",
+              "inline"
+            ],
+            "enumDescriptions": [
+              "Store comments in a separate `<name>.md.comments.json` file next to the document (default).",
+              "Store comments inside the .md file itself, as invisible HTML comments, so a single file carries its comments."
+            ],
+            "default": "sidecar",
+            "markdownDescription": "Where block comments are persisted."
+          },
+          "kiro-md-translator.commentPlacement": {
+            "type": "string",
+            "enum": [
+              "after-paragraph",
+              "end-of-file"
+            ],
+            "enumDescriptions": [
+              "Place each comment right after its paragraph (default).",
+              "Collect all comments in one block at the end of the file."
+            ],
+            "default": "after-paragraph",
+            "markdownDescription": "Where inline comments are written. Applies only when Comment Storage is `inline`."
+          }
         }
       }
-    }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run build",
