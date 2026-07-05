@@ -34,6 +34,8 @@ export interface CacheEntry {
 
 export type ProviderType = 'deepl' | 'google' | 'custom' | 'ollama'
 export type TranslationMode = 'on-demand' | 'automatic'
+export type CommentStorage = 'sidecar' | 'inline'
+export type CommentPlacement = 'after-paragraph' | 'end-of-file'
 
 export interface PluginConfig {
   targetLanguage: LanguageCode | undefined
@@ -47,6 +49,8 @@ export interface PluginConfig {
   ollamaModel: string
   /** Terms that must never be translated (kept verbatim), req 3.18. */
   glossary: string[]
+  commentStorage: CommentStorage
+  commentPlacement: CommentPlacement
 }
 
 // ---------------------------------------------------------------------------
@@ -252,6 +256,8 @@ export interface ISettingsManager {
   getOllamaEndpoint(): string | undefined
   getOllamaModel(): string
   getGlossary(): string[]
+  getCommentStorage(): CommentStorage
+  getCommentPlacement(): CommentPlacement
   /** Append a do-not-translate term to the Glossary setting (req 3.19). Resolves
    *  to true if it was added, false if blank or already present. */
   addGlossaryTerm(term: string): Promise<boolean>

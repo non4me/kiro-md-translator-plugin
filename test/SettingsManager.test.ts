@@ -40,3 +40,28 @@ describe('SettingsManager', () => {
     expect(s.getGlossary()).toEqual(['API', 'SDK'])
   })
 })
+
+describe('comment storage settings', () => {
+  beforeEach(() => __clearConfig())
+
+  it('defaults to sidecar + after-paragraph', () => {
+    const s = new SettingsManager()
+    expect(s.getCommentStorage()).toBe('sidecar')
+    expect(s.getCommentPlacement()).toBe('after-paragraph')
+  })
+
+  it('reads configured values', () => {
+    __setConfig('kiro-md-translator', 'commentStorage', 'inline')
+    __setConfig('kiro-md-translator', 'commentPlacement', 'end-of-file')
+    const s = new SettingsManager()
+    expect(s.getCommentStorage()).toBe('inline')
+    expect(s.getCommentPlacement()).toBe('end-of-file')
+  })
+
+  it('surfaces both in the PluginConfig snapshot', () => {
+    __setConfig('kiro-md-translator', 'commentStorage', 'inline')
+    const cfg = new SettingsManager().getConfig()
+    expect(cfg.commentStorage).toBe('inline')
+    expect(cfg.commentPlacement).toBe('after-paragraph')
+  })
+})

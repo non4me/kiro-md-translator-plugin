@@ -1,5 +1,7 @@
 import * as vscode from 'vscode'
 import type {
+  CommentPlacement,
+  CommentStorage,
   ISettingsManager,
   LanguageCode,
   PluginConfig,
@@ -46,6 +48,14 @@ export class SettingsManager implements ISettingsManager {
     return this.cfg().get<string>('ollamaModel', 'llama3.1') || 'llama3.1'
   }
 
+  getCommentStorage(): CommentStorage {
+    return this.cfg().get<CommentStorage>('commentStorage', 'sidecar')
+  }
+
+  getCommentPlacement(): CommentPlacement {
+    return this.cfg().get<CommentPlacement>('commentPlacement', 'after-paragraph')
+  }
+
   /** Do-not-translate terms (req 3.18). Blank/whitespace entries are dropped. */
   getGlossary(): string[] {
     const value = this.cfg().get<string[]>('glossary', [])
@@ -80,6 +90,8 @@ export class SettingsManager implements ISettingsManager {
       ollamaEndpoint: this.getOllamaEndpoint(),
       ollamaModel: this.getOllamaModel(),
       glossary: this.getGlossary(),
+      commentStorage: this.getCommentStorage(),
+      commentPlacement: this.getCommentPlacement(),
     }
   }
 
