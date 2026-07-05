@@ -93,29 +93,29 @@
               "Local Ollama server (set Ollama Endpoint and Model below). No API key required."
             ],
             "default": "deepl",
-            "markdownDescription": "Translation provider.\n\n**API keys** — stored in the OS keychain, never in `settings.json`:\n\n- DeepL — [Set key](command:kiro-md-translator.setApiKey?%5B%22deepl%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22deepl%22%5D)\n- Google — [Set key](command:kiro-md-translator.setApiKey?%5B%22google%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22google%22%5D)\n- Custom — [Set key](command:kiro-md-translator.setApiKey?%5B%22custom%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22custom%22%5D)\n- Ollama (local, **no key**) — [Test connection](command:kiro-md-translator.testConnection?%5B%22ollama%22%5D)"
+            "markdownDescription": "Translation provider.\n\n**API keys** are stored in the OS keychain, never in `settings.json`:\n\n- DeepL — [Set key](command:kiro-md-translator.setApiKey?%5B%22deepl%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22deepl%22%5D)\n- Google — [Set key](command:kiro-md-translator.setApiKey?%5B%22google%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22google%22%5D)\n\n_Ollama and Custom actions and settings are in their own sections below._"
           }
         }
       },
       {
         "title": "%config.section.providerCustom%",
-        "order": 2,
+        "order": 3,
         "properties": {
           "kiro-md-translator.customEndpoint": {
             "type": "string",
             "default": "",
-            "markdownDescription": "Base URL for the **Custom** HTTP provider. Ignored unless Provider Type is `custom`."
+            "markdownDescription": "**Custom** HTTP provider — [Set key](command:kiro-md-translator.setApiKey?%5B%22custom%22%5D) · [Test connection](command:kiro-md-translator.testConnection?%5B%22custom%22%5D)\n\nBase URL for the endpoint. Ignored unless Provider Type is `custom`."
           }
         }
       },
       {
         "title": "%config.section.providerOllama%",
-        "order": 3,
+        "order": 2,
         "properties": {
           "kiro-md-translator.ollamaEndpoint": {
             "type": "string",
             "default": "http://localhost:11434",
-            "markdownDescription": "Base URL of the local **Ollama** server. Ignored unless Provider Type is `ollama`. `http://` is allowed for localhost."
+            "markdownDescription": "**Ollama** (local, no API key) — [Test connection](command:kiro-md-translator.testConnection?%5B%22ollama%22%5D)\n\nBase URL of the local Ollama server. `http://` is allowed for localhost. Ignored unless Provider Type is `ollama`."
           },
           "kiro-md-translator.ollamaModel": {
             "type": "string",
@@ -176,12 +176,16 @@
               "sidecar",
               "inline"
             ],
+            "enumItemLabels": [
+              "Separate file",
+              "Inside the Markdown file"
+            ],
             "enumDescriptions": [
-              "Store comments in a separate `<name>.md.comments.json` file next to the document (default).",
-              "Store comments inside the .md file itself, as invisible HTML comments, so a single file carries its comments."
+              "Store comments in a separate `<name>.md.comments.json` file next to the document (default). The Markdown file itself is never modified.",
+              "Embed comments inside the Markdown file as invisible HTML comments, so a single file carries its comments."
             ],
             "default": "sidecar",
-            "markdownDescription": "Where block comments are persisted."
+            "markdownDescription": "Where block comments are saved: in a **separate file** next to the document (default), or **inside the Markdown file** itself."
           },
           "kiro-md-translator.commentPlacement": {
             "type": "string",

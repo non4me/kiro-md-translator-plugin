@@ -1,7 +1,7 @@
 {
   "config.section.provider": "Provider",
-  "config.section.providerCustom": "Provider: Custom",
-  "config.section.providerOllama": "Provider: Ollama",
+  "config.section.providerOllama": "Ollama",
+  "config.section.providerCustom": "Custom",
   "config.section.languages": "Languages",
   "config.section.translation": "Translation",
   "config.section.comments": "Comments"
