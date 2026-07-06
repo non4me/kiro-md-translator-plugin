@@ -55,9 +55,9 @@ export function getPreviewHtml(
     .bctl { position: absolute; top: .05rem; display: flex; flex-direction: column;
       gap: .15rem; align-items: center; } /* left is set per block in JS for gutter alignment */
     .bctl button { display: flex; padding: 0; margin: 0; border: none; background: none;
-      color: var(--vscode-foreground); cursor: pointer; opacity: .5; }
-    /* Icons rest at half opacity and go full while the block is hovered (req 10.8)... */
-    #content [data-paragraph-index]:hover > .bctl button { opacity: 1; }
+      color: var(--vscode-foreground); cursor: pointer; opacity: 0; }
+    /* Icons appear (dimmed) only while the block is hovered (req 10.8)... */
+    #content [data-paragraph-index]:hover > .bctl button { opacity: .5; }
     /* ...except a block WITH comments keeps its comment icon shown, drawn filled. */
     .bctl-comment.has { opacity: 1; }
     /* Comments disabled in settings (req 11.13): hide the comment control entirely
