@@ -3,6 +3,19 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.4] — 2026-07-06
+
+### Added
+
+- **Settings link instead of dead buttons.** When a required setting is missing — no Target Language,
+  or no API key for a provider that needs one (DeepL, Google; Ollama is keyless and Custom treats the
+  key as optional) — the header now shows a clickable message naming exactly what is missing (the target
+  language and/or the API key) that opens the extension settings, in place of the disabled Translate /
+  Bilingual buttons. The hint clears the moment the missing setting is provided, including an API key
+  saved via the command (which lives in the keychain, outside the settings-change event).
+
+[0.5.4]: #054--2026-07-06
+
 ## [0.4.10] — 2026-07-05
 
 ### Changed

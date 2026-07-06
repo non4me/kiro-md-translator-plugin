@@ -91,7 +91,12 @@ export class ActivationController implements IActivationController, vscode.Custo
         this.active?.onWebviewMessage({ type: 'saveTranslation' }),
       ),
       this.settings.onDidChangeSettings(() => {
-        void this.refreshApiKey()
+        // The key reload is async; once it settles, re-push the button state so a
+        // provider switch that changes the key requirement updates the toolbar hint
+        // (req 3.20) rather than showing the previous provider's key status.
+        void this.refreshApiKey().then(() => {
+          for (const c of this.controllers) c.updateButtonState()
+        })
         // Drop the shared cache when the fingerprint (storage lang / provider /
         // endpoint / model / glossary) changed. The L1+L2 tiers are owned here and
         // outlive any preview, so this must happen at the owner level — a settings
@@ -180,6 +185,9 @@ export class ActivationController implements IActivationController, vscode.Custo
       void vscode.window.showInformationMessage(`${label} API key saved.`)
     }
     await this.refreshApiKey()
+    // The key lives in the keychain, not in settings, so no settings-change event
+    // fires — re-push button state so the toolbar hint clears/appears (req 3.20).
+    for (const c of this.controllers) c.updateButtonState()
   }
 
   /** Command: build the provider with its stored key and report the test as a toast. */
@@ -279,6 +287,7 @@ export class ActivationController implements IActivationController, vscode.Custo
       applyEdit,
       executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
       whenReady: () => this.ready,
+      hasApiKey: () => (this.apiKey ?? '').trim().length > 0,
     }
 
     const controller = new PreviewController(deps)

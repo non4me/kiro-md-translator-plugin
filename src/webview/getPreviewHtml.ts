@@ -81,6 +81,9 @@ export function getPreviewHtml(
     #orphaned { padding: .4rem 1.2rem; border-top: 1px solid var(--vscode-panel-border); font-size: .85em; }
     #orphaned .oc { margin: .25rem 0; }
     #orphaned .quote { opacity: .7; font-style: italic; }
+    /* Shown in place of the toolbar buttons when required settings are missing (req 3.20). */
+    #settings-link { color: var(--vscode-textLink-foreground); cursor: pointer; text-decoration: none; }
+    #settings-link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
     [hidden] { display: none !important; }
     .spinner::after { content: '…'; }
   </style>
@@ -90,6 +93,7 @@ export function getPreviewHtml(
     <button id="translate-btn" aria-label="Translate">Translate</button>
     <button id="bilingual-btn" aria-label="Bilingual view" disabled>Bilingual</button>
     <span id="auto-badge" hidden>Auto</span>
+    <a id="settings-link" href="#" role="button" hidden></a>
     <span id="status" aria-live="polite"></span>
   </header>
   <article id="content" aria-busy="false"></article>

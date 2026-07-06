@@ -128,6 +128,7 @@ export type WebviewMessage =
   | { type: 'addComment'; paragraphIndex: number; body: string }
   | { type: 'editComment'; commentId: string; body: string }
   | { type: 'deleteComment'; commentId: string }
+  | { type: 'openSettings' }
 
 /** Messages Extension Host → Webview. */
 export type ExtensionMessage =
@@ -150,6 +151,11 @@ export type ExtensionMessage =
       mode: TranslationMode
       storageLang: LanguageCode
       targetLang: LanguageCode | undefined
+      /** When required settings are missing (Target_Language, or an API key for a
+       *  provider that needs one), a ready-to-display localized message. The webview
+       *  replaces the toolbar buttons with a link carrying this text (req 3.20).
+       *  Undefined/empty when the configuration is complete. */
+      settingsHint?: string
     }
   | { type: 'memoryWarning'; level: 'large-file' | 'high-memory' }
   | { type: 'commentsForBlocks'; blocks: BlockCommentCount[] }

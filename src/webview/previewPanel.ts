@@ -14,6 +14,7 @@ const tooltip = document.getElementById('tooltip') as HTMLElement
 const translateBtn = document.getElementById('translate-btn') as HTMLButtonElement
 const bilingualBtn = document.getElementById('bilingual-btn') as HTMLButtonElement
 const autoBadge = document.getElementById('auto-badge') as HTMLElement
+const settingsLink = document.getElementById('settings-link') as HTMLAnchorElement
 const statusEl = document.getElementById('status') as HTMLElement
 const modal = document.getElementById('modal') as HTMLElement
 const modalStorage = document.getElementById('modal-storage') as HTMLTextAreaElement
@@ -378,6 +379,11 @@ translateBtn.addEventListener('click', () => {
     post({ type: 'translateRequest' }) // host translates (reuses the segment cache)
   }
 })
+// The "configure settings" link shown when required settings are missing (req 3.20).
+settingsLink.addEventListener('click', (e) => {
+  e.preventDefault()
+  post({ type: 'openSettings' })
+})
 // Bilingual toggle: enter needs a translation — request one first if absent.
 bilingualBtn.addEventListener('click', () => {
   if (bilingual) {
@@ -614,8 +620,15 @@ window.addEventListener('message', (event: MessageEvent) => {
       break
     }
     case 'updateButtonState': {
+      // Required settings missing → replace the toolbar buttons with a settings link
+      // (req 3.20). The buttons stay in the DOM (Property 6) but are hidden.
+      const hint = msg.settingsHint as string | undefined
+      settingsLink.hidden = !hint
+      if (hint) settingsLink.textContent = hint
+      translateBtn.hidden = Boolean(hint)
+      bilingualBtn.hidden = Boolean(hint)
       const auto = msg.mode === 'automatic'
-      autoBadge.hidden = !auto
+      autoBadge.hidden = !!hint || !auto
       translateBtn.disabled = auto || !msg.translateEnabled
       const newTarget = String(msg.targetLang ?? '')
       if (newTarget !== targetCode) translatedHtml = undefined // target changed → stale

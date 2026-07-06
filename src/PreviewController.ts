@@ -47,6 +47,10 @@ export interface PreviewDeps {
    *  at-open auto-translate awaits it so it never builds a provider with an
    *  unloaded (empty) key on cold start. */
   whenReady?: () => Promise<void>
+  /** Whether the active provider currently has a non-empty API key in the keychain.
+   *  Used to decide if the "configure settings" hint replaces the toolbar buttons
+   *  (req 3.20). Absent in unit contexts → treated as present (key not required). */
+  hasApiKey?: () => boolean
 }
 
 type State =
@@ -105,6 +109,11 @@ export class PreviewController implements IPreviewController {
     this.scheduleRender()
     this.updateButtonState()
     const cfg = this.deps.settings.getConfig()
+    // The key loads asynchronously; re-push once it settles so a provider that needs
+    // a key does not flash a false "set the API key" hint before the key arrives.
+    if (this.deps.whenReady && this.deps.hasApiKey) {
+      void this.deps.whenReady().then(() => this.updateButtonState())
+    }
     if (cfg.translationMode === 'automatic' && cfg.targetLanguage) {
       // req 3.5: translate immediately on file open — but wait for the API key to
       // finish loading first, or the first translation goes out with an empty key.
@@ -219,6 +228,10 @@ export class PreviewController implements IPreviewController {
     switch (message.type) {
       case 'translateRequest':
         void this.translateNow()
+        break
+      case 'openSettings':
+        // The toolbar hint links here when required settings are missing (req 3.20).
+        void this.deps.executeCommand?.('kiro-md-translator.openSettings')
         break
       case 'dblclick':
         this.enterEditMode()
@@ -458,7 +471,24 @@ export class PreviewController implements IPreviewController {
       mode: cfg.translationMode,
       storageLang: cfg.storageLanguage,
       targetLang: cfg.targetLanguage,
+      settingsHint: this.settingsHint(),
     })
+  }
+
+  /** Localized "configure settings" message when a required setting is missing, else
+   *  undefined (req 3.20). Target_Language is always required; an API key is required
+   *  only for providers that authenticate with one (DeepL, Google) — Ollama is keyless
+   *  and Custom treats the key as optional, matching `createProvider`. */
+  private settingsHint(): string | undefined {
+    const cfg = this.deps.settings.getConfig()
+    const missingTarget = cfg.targetLanguage === undefined
+    const keyRequired = cfg.providerType === 'deepl' || cfg.providerType === 'google'
+    // Absent hasApiKey (unit contexts) → assume present, so the hint stays off.
+    const missingKey = keyRequired && !(this.deps.hasApiKey?.() ?? true)
+    if (missingTarget && missingKey) return t('Set the target language and API key in settings')
+    if (missingTarget) return t('Set the target language in settings')
+    if (missingKey) return t('Set the API key in settings')
+    return undefined
   }
 
   /**

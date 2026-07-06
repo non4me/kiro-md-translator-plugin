@@ -372,3 +372,74 @@ describe('PreviewController comments wiring (req 11)', () => {
     expect(posted.find((m) => m.type === 'commentsForBlocks')).toBeUndefined()
   })
 })
+
+describe('PreviewController settings hint (req 3.20)', () => {
+  function settingsFor(cfg: Partial<PluginConfig>) {
+    const merged = { ...CONFIG, ...cfg }
+    return {
+      getConfig: () => merged,
+      getTargetLanguage: () => merged.targetLanguage,
+      getStorageLanguage: () => merged.storageLanguage,
+      getTranslationMode: () => merged.translationMode,
+      getProviderType: () => merged.providerType,
+      getCustomEndpoint: () => merged.customEndpoint,
+      onDidChangeSettings: () => ({ dispose() {} }),
+    }
+  }
+
+  function hintFor(cfg: Partial<PluginConfig>, hasApiKey?: boolean): string | undefined {
+    const { controller, posted } = setup({
+      settings: settingsFor(cfg) as never,
+      ...(hasApiKey === undefined ? {} : { hasApiKey: () => hasApiKey }),
+    })
+    controller.updateButtonState()
+    const msg = posted.find((m) => m.type === 'updateButtonState')
+    return msg && msg.type === 'updateButtonState' ? msg.settingsHint : undefined
+  }
+
+  it('deepl with a target but no key → hint names the API key', () => {
+    expect(hintFor({ providerType: 'deepl', targetLanguage: 'de' }, false)).toBe(
+      'Set the API key in settings',
+    )
+  })
+
+  it('deepl with a target and a key → no hint', () => {
+    expect(hintFor({ providerType: 'deepl', targetLanguage: 'de' }, true)).toBeUndefined()
+  })
+
+  it('deepl with neither a target nor a key → hint names both', () => {
+    expect(hintFor({ providerType: 'deepl', targetLanguage: undefined }, false)).toBe(
+      'Set the target language and API key in settings',
+    )
+  })
+
+  it('ollama without a target → hint names only the target (key not required)', () => {
+    expect(hintFor({ providerType: 'ollama', targetLanguage: undefined }, false)).toBe(
+      'Set the target language in settings',
+    )
+  })
+
+  it('ollama with a target and no key → no hint (keyless provider)', () => {
+    expect(hintFor({ providerType: 'ollama', targetLanguage: 'de' }, false)).toBeUndefined()
+  })
+
+  it('custom with a target and no key → no hint (key optional)', () => {
+    expect(hintFor({ providerType: 'custom', targetLanguage: 'de' }, false)).toBeUndefined()
+  })
+
+  it('absent hasApiKey dep (unit context) → key treated as present, no hint', () => {
+    expect(hintFor({ providerType: 'deepl', targetLanguage: 'de' })).toBeUndefined()
+  })
+
+  it('openSettings message runs the openSettings command', () => {
+    const calls: unknown[][] = []
+    const { controller } = setup({
+      executeCommand: (command, ...args) => {
+        calls.push([command, ...args])
+        return Promise.resolve()
+      },
+    })
+    controller.onWebviewMessage({ type: 'openSettings' })
+    expect(calls).toContainEqual(['kiro-md-translator.openSettings'])
+  })
+})
