@@ -35,11 +35,11 @@ export function getPreviewHtml(
       background: var(--vscode-editor-background); }
     /* Outline icon buttons (variant B), matching the gutter icons, pushed to the
        right of the toolbar. Text label lives in title/aria-label (tooltip). */
-    .toolbtn { display: inline-flex; align-items: center; padding: 2px; margin: 0; border: none;
+    .toolbtn { display: inline-flex; align-items: center; padding: 0; margin: 0; border: none;
       background: none; color: var(--vscode-foreground); cursor: pointer; opacity: .85; }
     .toolbtn:hover { opacity: 1; }
     .toolbtn:disabled { opacity: .35; cursor: default; }
-    .toolbtn svg { width: 16px; height: 16px; display: block; }
+    .toolbtn svg { width: 20px; height: 20px; display: block; }
     #translate-btn { margin-left: auto; } /* first right-aligned item pushes the group right */
     #content { padding: 1rem 1.2rem 1rem 2.4rem; } /* left gutter holds the edit/comment icons */
     /* Bilingual: one grid where each block PAIR is a row (height = the taller side),
