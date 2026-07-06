@@ -138,14 +138,22 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
 // Feather-style outline glyphs (stroke, no fill): edit-2 pencil + message-square.
 const EDIT_ICON = 'M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z'
 const COMMENT_ICON = 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'
-// Toolbar glyphs (variant B): a globe (translate) and split columns (bilingual).
-const TRANSLATE_ICON =
-  'M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20z M2 12h20 M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'
+// Toolbar glyphs (variant B), matching the native editor-title SVGs (media/*.svg):
+// a dictionary book with 文A (translate) and split columns (bilingual).
+const TRANSLATE_ICON = [
+  'M6 3 h12 a2 2 0 0 1 2 2 v14 a2 2 0 0 1 -2 2 h-12 a2 2 0 0 1 -2 -2 v-14 a2 2 0 0 1 2 -2 z', // book cover
+  'M6.8 8 h4', // 文 — top stroke
+  'M8.8 6.8 v1.2', // 文 — tick
+  'M8.8 9.2 l-2.2 4.2', // 文 — left leg
+  'M8.8 9.2 l2.2 4.2', // 文 — right leg
+  'M12.4 17.2 l2 -5 l2 5', // A — legs
+  'M13.1 15.3 h2.6', // A — crossbar
+]
 const BILINGUAL_ICON = 'M3 4h18v16H3z M12 4v16'
 const GUTTER_INSET_PX = 6 // where the icon column sits inside the pane's left gutter
 
-/** Build a stroked (outline) 24×24 icon from a single path. */
-function icon(pathD: string): SVGElement {
+/** Build a stroked (outline) 24×24 icon from one path or several. */
+function icon(pathD: string | string[]): SVGElement {
   const svg = document.createElementNS(SVG_NS, 'svg')
   svg.setAttribute('viewBox', '0 0 24 24')
   svg.setAttribute('fill', 'none')
@@ -153,9 +161,11 @@ function icon(pathD: string): SVGElement {
   svg.setAttribute('stroke-width', '2')
   svg.setAttribute('stroke-linecap', 'round')
   svg.setAttribute('stroke-linejoin', 'round')
-  const path = document.createElementNS(SVG_NS, 'path')
-  path.setAttribute('d', pathD)
-  svg.appendChild(path)
+  for (const d of Array.isArray(pathD) ? pathD : [pathD]) {
+    const path = document.createElementNS(SVG_NS, 'path')
+    path.setAttribute('d', d)
+    svg.appendChild(path)
+  }
   return svg
 }
 

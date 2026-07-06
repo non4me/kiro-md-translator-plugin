@@ -3,6 +3,14 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.8] — 2026-07-06
+
+### Changed
+
+- **Custom toolbar icons.** The title-bar and preview toolbar now use a hand-drawn dictionary‑book
+  glyph with 文A for Translate (and split columns for Bilingual) instead of the generic codicons, so the
+  actions read as translation at a glance. Title-bar icons ship as light/dark SVGs (`media/`).
+
 ## [0.5.7] — 2026-07-06
 
 ### Added

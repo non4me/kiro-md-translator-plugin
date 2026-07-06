@@ -2,7 +2,7 @@
   "name": "kiro-md-translator-plugin",
   "displayName": "Read Markdown Translator",
   "description": "Rendered Markdown preview with synchronous translation for the Kiro/VS Code IDE.",
-  "version": "0.5.7",
+  "version": "0.5.8",
   "icon": "media/icon.png",
   "publisher": "VladimirTroyanenko",
   "license": "MIT",
@@ -59,12 +59,18 @@
       {
         "command": "kiro-md-translator.toggleTranslate",
         "title": "Markdown Translator: Toggle Translation",
-        "icon": "$(globe)"
+        "icon": {
+          "light": "media/translate-light.svg",
+          "dark": "media/translate-dark.svg"
+        }
       },
       {
         "command": "kiro-md-translator.toggleBilingual",
         "title": "Markdown Translator: Toggle Bilingual View",
-        "icon": "$(split-horizontal)"
+        "icon": {
+          "light": "media/bilingual-light.svg",
+          "dark": "media/bilingual-dark.svg"
+        }
       }
     ],
     "menus": {
