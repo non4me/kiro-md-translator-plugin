@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.9] — 2026-07-06
+
+### Changed
+
+- **Toolbar polish.** The preview toolbar strip is thinner (2px/6px padding), the Translate / Bilingual
+  icons are larger (20px) and rest at half opacity. The per-block edit / comment gutter icons stay
+  hidden until the block is hovered and then appear dimmed (.5), including the persistent
+  has‑comments indicator.
+
 ## [0.5.8] — 2026-07-06
 
 ### Changed
