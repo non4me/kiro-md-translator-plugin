@@ -58,8 +58,8 @@ export function getPreviewHtml(
       color: var(--vscode-foreground); cursor: pointer; opacity: 0; }
     /* Icons appear (dimmed) only while the block is hovered (req 10.8)... */
     #content [data-paragraph-index]:hover > .bctl button { opacity: .5; }
-    /* ...except a block WITH comments keeps its comment icon shown, drawn filled. */
-    .bctl-comment.has { opacity: 1; }
+    /* ...except a block WITH comments keeps its comment icon shown (dimmed), drawn filled. */
+    .bctl-comment.has { opacity: .5; }
     /* Comments disabled in settings (req 11.13): hide the comment control entirely
        (a display:none element takes no hover/click, so comments are unreachable);
        the edit (pencil) control is untouched. */
