@@ -67,10 +67,18 @@ export class ActivationController implements IActivationController, vscode.Custo
         // webview's post-reload `ready`, so without this the preview returns blank.
         webviewOptions: { retainContextWhenHidden: true },
       }),
-      // Settings live in the native settings UI now; the command just reveals it.
-      vscode.commands.registerCommand('kiro-md-translator.openSettings', () =>
-        vscode.commands.executeCommand('workbench.action.openSettings', `@ext:${EXTENSION_ID}`),
-      ),
+      // Settings live in the native settings UI now; the command just reveals it,
+      // filtered to this extension. When a workspace/folder is open, land on the
+      // Workspace tab (that is where a project's `.vscode/settings.json` values live);
+      // fall back to the User settings page when no folder is open.
+      vscode.commands.registerCommand('kiro-md-translator.openSettings', () => {
+        const query = `@ext:${EXTENSION_ID}`
+        const inWorkspace = (vscode.workspace.workspaceFolders?.length ?? 0) > 0
+        return vscode.commands.executeCommand(
+          inWorkspace ? 'workbench.action.openWorkspaceSettings' : 'workbench.action.openSettings',
+          query,
+        )
+      }),
       // Store a provider's API key in the OS keychain (masked input). `provider` is
       // passed by the settings-page command links; from the palette it defaults to
       // the active provider.
