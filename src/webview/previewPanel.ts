@@ -73,7 +73,8 @@ function updateButtonLabel(): void {
     displaying === 'translation'
       ? `Original${storageCode ? ` (${langBadge(storageCode)})` : ''}`
       : `Translate${targetCode ? ` (${langBadge(targetCode)})` : ''}`
-  translateBtn.textContent = label
+  // Outline icon button (variant B): the label is the tooltip, the SVG stays intact.
+  translateBtn.title = label
   translateBtn.setAttribute('aria-label', label)
 }
 
@@ -137,6 +138,10 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
 // Feather-style outline glyphs (stroke, no fill): edit-2 pencil + message-square.
 const EDIT_ICON = 'M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z'
 const COMMENT_ICON = 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'
+// Toolbar glyphs (variant B): a globe (translate) and split columns (bilingual).
+const TRANSLATE_ICON =
+  'M12 2a10 10 0 1 0 0 20 10 10 0 1 0 0-20z M2 12h20 M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z'
+const BILINGUAL_ICON = 'M3 4h18v16H3z M12 4v16'
 const GUTTER_INSET_PX = 6 // where the icon column sits inside the pane's left gutter
 
 /** Build a stroked (outline) 24×24 icon from a single path. */
@@ -153,6 +158,11 @@ function icon(pathD: string): SVGElement {
   svg.appendChild(path)
   return svg
 }
+
+// Outline icons for the toolbar buttons (variant B). The label text lives in the
+// button's title/aria-label (set by updateButtonLabel/updateBilingualBtn).
+translateBtn.appendChild(icon(TRANSLATE_ICON))
+bilingualBtn.appendChild(icon(BILINGUAL_ICON))
 
 /** Draw the edit + comment icon column in the left gutter of every block (req 10.8),
  *  in BOTH single and bilingual view. Edit/comment used to live in the hover tooltip;
@@ -250,7 +260,9 @@ function exitBilingual(): void {
 
 function updateBilingualBtn(): void {
   bilingualBtn.disabled = targetCode === '' // no target → no translation to pair (req 10.2)
-  bilingualBtn.textContent = bilingual ? 'Single view' : 'Bilingual'
+  const label = bilingual ? 'Single view' : 'Bilingual'
+  bilingualBtn.title = label
+  bilingualBtn.setAttribute('aria-label', label)
 }
 
 /** Bilingual pair highlight (req 10.7): highlight the hovered block AND its
@@ -361,8 +373,10 @@ window.addEventListener('scroll', () => {
 })
 
 // The button toggles Translate <-> Original. Both directions reuse cached HTML
-// (no API) once a translation exists; the first translation asks the host.
-translateBtn.addEventListener('click', () => {
+// (no API) once a translation exists; the first translation asks the host. Named so
+// BOTH the toolbar button and the native editor-title command (hostToggleTranslate)
+// run the exact same logic.
+function doTranslateToggle(): void {
   if (bilingual) return // the single-view toggle must not tear down the two-pane layout
   if (displaying === 'translation') {
     if (sourceHtml === undefined) return
@@ -378,14 +392,10 @@ translateBtn.addEventListener('click', () => {
   } else {
     post({ type: 'translateRequest' }) // host translates (reuses the segment cache)
   }
-})
-// The "configure settings" link shown when required settings are missing (req 3.20).
-settingsLink.addEventListener('click', (e) => {
-  e.preventDefault()
-  post({ type: 'openSettings' })
-})
-// Bilingual toggle: enter needs a translation — request one first if absent.
-bilingualBtn.addEventListener('click', () => {
+}
+// Bilingual toggle: enter needs a translation — request one first if absent. Shared
+// by the toolbar button and the native editor-title command (hostToggleBilingual).
+function doBilingualToggle(): void {
   if (bilingual) {
     exitBilingual()
     return
@@ -397,6 +407,13 @@ bilingualBtn.addEventListener('click', () => {
     return
   }
   enterBilingual()
+}
+translateBtn.addEventListener('click', doTranslateToggle)
+bilingualBtn.addEventListener('click', doBilingualToggle)
+// The "configure settings" link shown when required settings are missing (req 3.20).
+settingsLink.addEventListener('click', (e) => {
+  e.preventDefault()
+  post({ type: 'openSettings' })
 })
 content.addEventListener('dblclick', () => post({ type: 'dblclick' }))
 
@@ -643,6 +660,12 @@ window.addEventListener('message', (event: MessageEvent) => {
       updateBilingualBtn()
       break
     }
+    case 'hostToggleTranslate': // native editor-title icon (variant A) → same as the button
+      doTranslateToggle()
+      break
+    case 'hostToggleBilingual':
+      doBilingualToggle()
+      break
     case 'memoryWarning':
       statusEl.textContent =
         msg.level === 'large-file'

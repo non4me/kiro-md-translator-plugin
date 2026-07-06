@@ -98,12 +98,21 @@ export class ActivationController implements IActivationController, vscode.Custo
       vscode.commands.registerCommand('kiro-md-translator.saveTranslation', () =>
         this.active?.onWebviewMessage({ type: 'saveTranslation' }),
       ),
+      // Native editor-title toolbar (req 3.21): forward the icon click to the active
+      // preview, which runs the same toggle as its own toolbar button.
+      vscode.commands.registerCommand('kiro-md-translator.toggleTranslate', () =>
+        this.active?.hostToggleTranslate(),
+      ),
+      vscode.commands.registerCommand('kiro-md-translator.toggleBilingual', () =>
+        this.active?.hostToggleBilingual(),
+      ),
       this.settings.onDidChangeSettings(() => {
         // The key reload is async; once it settles, re-push the button state so a
         // provider switch that changes the key requirement updates the toolbar hint
         // (req 3.20) rather than showing the previous provider's key status.
         void this.refreshApiKey().then(() => {
           for (const c of this.controllers) c.updateButtonState()
+          this.updateTitleContext() // key requirement may have changed → refresh icons
         })
         // Drop the shared cache when the fingerprint (storage lang / provider /
         // endpoint / model / glossary) changed. The L1+L2 tiers are owned here and
@@ -115,6 +124,7 @@ export class ActivationController implements IActivationController, vscode.Custo
         // Broadcast to EVERY open preview: `active` is only the most-recently-resolved
         // one, so a focused-but-not-last doc would otherwise never refresh.
         for (const c of this.controllers) c.onSettingsChanged()
+        this.updateTitleContext() // targetLanguage change may change settingsMissing
       }),
     )
   }
@@ -159,6 +169,14 @@ export class ActivationController implements IActivationController, vscode.Custo
     return createProvider(this.settings.getConfig(), this.apiKey ?? '')
   }
 
+  /** Refresh the `kiroMd.settingsMissing` context key from the active preview, so the
+   *  native editor-title toolbar icons hide when a required setting is missing (req
+   *  3.21). No active preview → hidden. */
+  private updateTitleContext(): void {
+    const missing = this.active ? this.active.isSettingsMissing() : true
+    void vscode.commands.executeCommand('setContext', 'kiroMd.settingsMissing', missing)
+  }
+
   /** Select the comment persistence backend from settings (req 11): sidecar by
    *  default; inline end-of-file or after-paragraph when `commentStorage` is
    *  `inline`, per `commentPlacement`. */
@@ -196,6 +214,7 @@ export class ActivationController implements IActivationController, vscode.Custo
     // The key lives in the keychain, not in settings, so no settings-change event
     // fires — re-push button state so the toolbar hint clears/appears (req 3.20).
     for (const c of this.controllers) c.updateButtonState()
+    this.updateTitleContext() // and refresh the native-toolbar icon visibility
   }
 
   /** Command: build the provider with its stored key and report the test as a toast. */
@@ -315,6 +334,15 @@ export class ActivationController implements IActivationController, vscode.Custo
           controller.onEditorScroll(e.visibleRanges[0]?.start.line ?? 0)
         }
       }),
+      // Track focus so the native editor-title toolbar (req 3.21) reflects THIS
+      // preview: when it becomes active, make it the command target and refresh the
+      // `kiroMd.settingsMissing` context key from its state.
+      webviewPanel.onDidChangeViewState(() => {
+        if (webviewPanel.active) {
+          this.active = controller
+          this.updateTitleContext()
+        }
+      }),
       // Swap the comment backend + migrate ONLY when the backend TYPE actually
       // changed, so unrelated settings changes (targetLanguage, provider, …) don't
       // re-home comments. `constructor` equality holds when neither commentStorage
@@ -335,8 +363,10 @@ export class ActivationController implements IActivationController, vscode.Custo
       subs.forEach((s) => s.dispose())
       this.controllers.delete(controller)
       if (this.active === controller) this.active = undefined
+      this.updateTitleContext()
     })
 
     controller.start()
+    this.updateTitleContext()
   }
 }

@@ -33,6 +33,14 @@ export function getPreviewHtml(
     header { position: sticky; top: 0; z-index: 5; display: flex; gap: .5rem; align-items: center;
       padding: .4rem .8rem; border-bottom: 1px solid var(--vscode-panel-border);
       background: var(--vscode-editor-background); }
+    /* Outline icon buttons (variant B), matching the gutter icons, pushed to the
+       right of the toolbar. Text label lives in title/aria-label (tooltip). */
+    .toolbtn { display: inline-flex; align-items: center; padding: 2px; margin: 0; border: none;
+      background: none; color: var(--vscode-foreground); cursor: pointer; opacity: .85; }
+    .toolbtn:hover { opacity: 1; }
+    .toolbtn:disabled { opacity: .35; cursor: default; }
+    .toolbtn svg { width: 16px; height: 16px; display: block; }
+    #translate-btn { margin-left: auto; } /* first right-aligned item pushes the group right */
     #content { padding: 1rem 1.2rem 1rem 2.4rem; } /* left gutter holds the edit/comment icons */
     /* Bilingual: one grid where each block PAIR is a row (height = the taller side),
        so a paragraph is always exactly across from its translation (req 10.4). The
@@ -98,11 +106,11 @@ export function getPreviewHtml(
 </head>
 <body>
   <header>
-    <button id="translate-btn" aria-label="Translate">Translate</button>
-    <button id="bilingual-btn" aria-label="Bilingual view" disabled>Bilingual</button>
     <span id="auto-badge" hidden>Auto</span>
     <a id="settings-link" href="#" role="button" hidden></a>
     <span id="status" aria-live="polite"></span>
+    <button id="translate-btn" class="toolbtn" aria-label="Translate"></button>
+    <button id="bilingual-btn" class="toolbtn" aria-label="Bilingual view" disabled></button>
   </header>
   <article id="content" aria-busy="false"></article>
   <section id="orphaned" aria-label="Outdated comments" hidden></section>

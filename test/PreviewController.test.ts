@@ -454,4 +454,20 @@ describe('PreviewController settings hint (req 3.20)', () => {
     controller.onWebviewMessage({ type: 'openSettings' })
     expect(calls).toContainEqual(['kiro-md-translator.openSettings'])
   })
+
+  it('hostToggleTranslate / hostToggleBilingual forward to the webview', () => {
+    const { controller, posted } = setup()
+    controller.hostToggleTranslate()
+    controller.hostToggleBilingual()
+    expect(posted.map((m) => m.type)).toEqual(
+      expect.arrayContaining(['hostToggleTranslate', 'hostToggleBilingual']),
+    )
+  })
+
+  it('isSettingsMissing follows the required-settings state', () => {
+    const complete = setup({ settings: settingsFor({ providerType: 'ollama', targetLanguage: 'de' }) as never })
+    expect(complete.controller.isSettingsMissing()).toBe(false)
+    const missing = setup({ settings: settingsFor({ providerType: 'deepl', targetLanguage: 'de' }) as never, hasApiKey: () => false })
+    expect(missing.controller.isSettingsMissing()).toBe(true)
+  })
 })

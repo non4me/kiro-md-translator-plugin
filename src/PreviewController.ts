@@ -494,6 +494,22 @@ export class PreviewController implements IPreviewController {
     return undefined
   }
 
+  /** True when a required setting is missing — drives the `kiroMd.settingsMissing`
+   *  context key that hides the native editor-title toolbar icons (req 3.21). */
+  isSettingsMissing(): boolean {
+    return this.settingsHint() !== undefined
+  }
+
+  /** Native editor-title toolbar commands (req 3.21): forward the icon click to the
+   *  webview, which runs the same toggle as its own toolbar button. */
+  hostToggleTranslate(): void {
+    this.deps.post({ type: 'hostToggleTranslate' })
+  }
+
+  hostToggleBilingual(): void {
+    this.deps.post({ type: 'hostToggleBilingual' })
+  }
+
   /**
    * A settings change refreshes the button and, when the translation LANGUAGES
    * changed, drops the now-stale rendering: automatic mode re-translates into the

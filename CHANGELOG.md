@@ -3,6 +3,21 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.7] — 2026-07-06
+
+### Added
+
+- **Translate / Bilingual actions in the editor title bar.** The two toolbar actions now also appear as
+  icons in the native editor tab title bar (next to split / …), shown only for the active preview and
+  hidden when required settings are missing. They toggle the same as the in-preview buttons.
+
+### Changed
+
+- **Preview toolbar buttons are now outline icons, right-aligned.** The Translate / Bilingual buttons in
+  the preview strip switched from bordered text to outline icon buttons (matching the per-block gutter
+  icons), aligned to the right edge; the text label moved to the tooltip. Both placements are available
+  so you can pick the one you prefer.
+
 ## [0.5.6] — 2026-07-06
 
 ### Fixed

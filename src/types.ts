@@ -161,6 +161,10 @@ export type ExtensionMessage =
       commentsEnabled: boolean
     }
   | { type: 'memoryWarning'; level: 'large-file' | 'high-memory' }
+  // Native editor-title toolbar commands (req 3.21): the host forwards a title-bar
+  // icon click to the webview, which runs the same toggle as its own toolbar button.
+  | { type: 'hostToggleTranslate' }
+  | { type: 'hostToggleBilingual' }
   | { type: 'commentsForBlocks'; blocks: BlockCommentCount[] }
   | { type: 'commentThread'; paragraphIndex: number; comments: Comment[] }
   | { type: 'orphanedComments'; threads: Array<{ quote: string; comments: Comment[] }> }
