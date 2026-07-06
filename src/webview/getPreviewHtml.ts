@@ -36,7 +36,7 @@ export function getPreviewHtml(
     /* Outline icon buttons (variant B), matching the gutter icons, pushed to the
        right of the toolbar. Text label lives in title/aria-label (tooltip). */
     .toolbtn { display: inline-flex; align-items: center; padding: 0; margin: 0; border: none;
-      background: none; color: var(--vscode-foreground); cursor: pointer; opacity: .85; }
+      background: none; color: var(--vscode-foreground); cursor: pointer; opacity: .5; }
     .toolbtn:hover { opacity: 1; }
     .toolbtn:disabled { opacity: .35; cursor: default; }
     .toolbtn svg { width: 20px; height: 20px; display: block; }
