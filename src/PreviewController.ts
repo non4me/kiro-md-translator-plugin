@@ -51,6 +51,8 @@ export interface PreviewDeps {
    *  Used to decide if the "configure settings" hint replaces the toolbar buttons
    *  (req 3.20). Absent in unit contexts → treated as present (key not required). */
   hasApiKey?: () => boolean
+  /** Whether the per-block comment control is shown (req 11.13). Absent → true. */
+  commentsEnabled?: () => boolean
 }
 
 type State =
@@ -472,6 +474,7 @@ export class PreviewController implements IPreviewController {
       storageLang: cfg.storageLanguage,
       targetLang: cfg.targetLanguage,
       settingsHint: this.settingsHint(),
+      commentsEnabled: this.deps.commentsEnabled?.() ?? true,
     })
   }
 

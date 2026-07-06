@@ -156,6 +156,9 @@ export type ExtensionMessage =
        *  replaces the toolbar buttons with a link carrying this text (req 3.20).
        *  Undefined/empty when the configuration is complete. */
       settingsHint?: string
+      /** Whether the per-block comment control is shown (req 11.13). When false the
+       *  webview hides the comment icon; the edit (pencil) control is unaffected. */
+      commentsEnabled: boolean
     }
   | { type: 'memoryWarning'; level: 'large-file' | 'high-memory' }
   | { type: 'commentsForBlocks'; blocks: BlockCommentCount[] }
@@ -265,6 +268,8 @@ export interface ISettingsManager {
   getGlossary(): string[]
   getCommentStorage(): CommentStorage
   getCommentPlacement(): CommentPlacement
+  /** Whether the per-block comment control is shown (req 11.13). Default true. */
+  getCommentsEnabled(): boolean
   /** Append a do-not-translate term to the Glossary setting (req 3.19). Resolves
    *  to true if it was added, false if blank or already present. */
   addGlossaryTerm(term: string): Promise<boolean>

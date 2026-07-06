@@ -622,6 +622,9 @@ window.addEventListener('message', (event: MessageEvent) => {
     case 'updateButtonState': {
       // Required settings missing → replace the toolbar buttons with a settings link
       // (req 3.20). The buttons stay in the DOM (Property 6) but are hidden.
+      // Comments toggle (req 11.13): a class on #content drives CSS that hides the
+      // per-block comment icon; toggling it live reflects a settings change at once.
+      content.classList.toggle('comments-off', msg.commentsEnabled === false)
       const hint = msg.settingsHint as string | undefined
       settingsLink.hidden = !hint
       if (hint) settingsLink.textContent = hint

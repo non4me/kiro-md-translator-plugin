@@ -3,6 +3,23 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.5] — 2026-07-06
+
+### Added
+
+- **Comments can be turned off.** A new `kiro-md-translator.commentsEnabled` setting (on by default) hides
+  the per-block comment icon when disabled — comments can no longer be added or opened, while the
+  paragraph edit (pencil) control stays. Existing comments in the file or sidecar are kept, just not
+  shown; toggling the setting takes effect immediately without reopening the preview.
+
+### Changed
+
+- **Settings link opens the Workspace tab.** When a folder is open, the "open settings" action (command
+  palette and the missing-settings link) now lands on the Workspace settings tab, where a project's
+  `.vscode/settings.json` values live; it falls back to User settings when no folder is open.
+
+[0.5.5]: #055--2026-07-06
+
 ## [0.5.4] — 2026-07-06
 
 ### Added

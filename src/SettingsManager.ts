@@ -56,6 +56,10 @@ export class SettingsManager implements ISettingsManager {
     return this.cfg().get<CommentPlacement>('commentPlacement', 'after-paragraph')
   }
 
+  getCommentsEnabled(): boolean {
+    return this.cfg().get<boolean>('commentsEnabled', true)
+  }
+
   /** Do-not-translate terms (req 3.18). Blank/whitespace entries are dropped. */
   getGlossary(): string[] {
     const value = this.cfg().get<string[]>('glossary', [])

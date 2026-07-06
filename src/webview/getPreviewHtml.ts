@@ -48,6 +48,10 @@ export function getPreviewHtml(
     #content [data-paragraph-index]:hover > .bctl button { opacity: 1; }
     /* ...except a block WITH comments keeps its comment icon shown, drawn filled. */
     .bctl-comment.has { opacity: 1; }
+    /* Comments disabled in settings (req 11.13): hide the comment control entirely
+       (a display:none element takes no hover/click, so comments are unreachable);
+       the edit (pencil) control is untouched. */
+    #content.comments-off .bctl-comment { display: none !important; }
     .bctl-comment.has svg { fill: currentColor; }
     .bctl button svg { width: 14px; height: 14px; display: block; }
     .bctl-comment { position: relative; }

@@ -431,6 +431,18 @@ describe('PreviewController settings hint (req 3.20)', () => {
     expect(hintFor({ providerType: 'deepl', targetLanguage: 'de' })).toBeUndefined()
   })
 
+  it('updateButtonState reports commentsEnabled=true by default (no dep)', () => {
+    const { controller, posted } = setup()
+    controller.updateButtonState()
+    expect(posted.find((m) => m.type === 'updateButtonState')).toMatchObject({ commentsEnabled: true })
+  })
+
+  it('updateButtonState reports commentsEnabled=false when the dep is off', () => {
+    const { controller, posted } = setup({ commentsEnabled: () => false })
+    controller.updateButtonState()
+    expect(posted.find((m) => m.type === 'updateButtonState')).toMatchObject({ commentsEnabled: false })
+  })
+
   it('openSettings message runs the openSettings command', () => {
     const calls: unknown[][] = []
     const { controller } = setup({

@@ -296,6 +296,7 @@ export class ActivationController implements IActivationController, vscode.Custo
       executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
       whenReady: () => this.ready,
       hasApiKey: () => (this.apiKey ?? '').trim().length > 0,
+      commentsEnabled: () => this.settings.getCommentsEnabled(),
     }
 
     const controller = new PreviewController(deps)
