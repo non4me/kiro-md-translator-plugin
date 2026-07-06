@@ -31,7 +31,7 @@ export function getPreviewHtml(
        would paint over the header while scrolling under it. Stays below the tooltip
        (10) and modals (20). */
     header { position: sticky; top: 0; z-index: 5; display: flex; gap: .5rem; align-items: center;
-      padding: .4rem .8rem; border-bottom: 1px solid var(--vscode-panel-border);
+      padding: 2px 6px; border-bottom: 1px solid var(--vscode-panel-border);
       background: var(--vscode-editor-background); }
     /* Outline icon buttons (variant B), matching the gutter icons, pushed to the
        right of the toolbar. Text label lives in title/aria-label (tooltip). */
