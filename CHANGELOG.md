@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.5.6] — 2026-07-06
+
+### Fixed
+
+- **Header no longer overlaps the content on scroll.** The sticky toolbar (Translate / Bilingual, or
+  the settings link) had no stacking order, so the relatively-positioned content blocks scrolled over
+  it and the text showed through. The header now has a `z-index`, so content slides cleanly behind its
+  opaque background (still below the hover tooltip and modals).
+
 ## [0.5.5] — 2026-07-06
 
 ### Added

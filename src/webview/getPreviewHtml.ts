@@ -26,7 +26,11 @@ export function getPreviewHtml(
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
     body { font-family: var(--vscode-font-family); padding: 0; margin: 0; }
-    header { position: sticky; top: 0; display: flex; gap: .5rem; align-items: center;
+    /* z-index keeps the sticky header above the content: the blocks are
+       position:relative (for the gutter icons), so without an explicit z-index they
+       would paint over the header while scrolling under it. Stays below the tooltip
+       (10) and modals (20). */
+    header { position: sticky; top: 0; z-index: 5; display: flex; gap: .5rem; align-items: center;
       padding: .4rem .8rem; border-bottom: 1px solid var(--vscode-panel-border);
       background: var(--vscode-editor-background); }
     #content { padding: 1rem 1.2rem 1rem 2.4rem; } /* left gutter holds the edit/comment icons */
