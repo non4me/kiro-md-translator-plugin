@@ -102,6 +102,25 @@ export function getPreviewHtml(
     #settings-link:hover { color: var(--vscode-textLink-activeForeground); text-decoration: underline; }
     [hidden] { display: none !important; }
     .spinner::after { content: '…'; }
+    /* In-document search overlay (req 1.8): our own find bar driven by window.find,
+       since the native find widget is inert in Code OSS builds (Kiro). Sits top-right
+       like the native one, above content/header but below modals (z-index 20). */
+    #find-bar { position: fixed; top: 6px; right: 20px; z-index: 15; display: flex; gap: 2px;
+      align-items: center; padding: 3px 4px; border-radius: 4px;
+      background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+      border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+      box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+    #find-input { width: 12rem; padding: 2px 4px; color: var(--vscode-input-foreground);
+      background: var(--vscode-input-background);
+      border: 1px solid var(--vscode-input-border, transparent); }
+    #find-input:focus { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+    #find-status { min-width: 4.5rem; padding: 0 .2rem; font-size: .8em;
+      color: var(--vscode-errorForeground); }
+    #find-bar button { display: inline-flex; align-items: center; justify-content: center;
+      width: 20px; height: 20px; padding: 0; border: none; border-radius: 3px;
+      background: none; color: var(--vscode-foreground); cursor: pointer; opacity: .8; }
+    #find-bar button:hover { opacity: 1;
+      background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.2)); }
   </style>
 </head>
 <body>
@@ -114,6 +133,14 @@ export function getPreviewHtml(
   </header>
   <article id="content" aria-busy="false"></article>
   <section id="orphaned" aria-label="Outdated comments" hidden></section>
+
+  <div id="find-bar" role="search" hidden>
+    <input id="find-input" type="text" aria-label="Find in document" placeholder="Find" />
+    <span id="find-status" aria-live="polite"></span>
+    <button id="find-prev" title="Previous match (Shift+Enter)" aria-label="Previous match">&#8593;</button>
+    <button id="find-next" title="Next match (Enter)" aria-label="Next match">&#8595;</button>
+    <button id="find-close" title="Close (Esc)" aria-label="Close find">&#10005;</button>
+  </div>
 
   <div id="tooltip" role="tooltip"></div>
 

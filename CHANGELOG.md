@@ -3,14 +3,24 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.1] — 2026-07-10
+
+### Fixed
+
+- **In-document search now works in Kiro.** The native find widget shipped in 0.6.0 relies on
+  Electron's `findInPage`, which is inert in Code OSS builds (Kiro) — the widget opened but never
+  matched. Replaced it with a small webview-local find bar driven by `window.find`: `Ctrl+F` /
+  `Cmd+F` opens it, `Enter` / `Shift+Enter` (or ↓ / ↑) step through matches with scroll-to, `Esc`
+  closes, and "No results" shows when nothing matches. Searches the displayed text (both columns in
+  bilingual view); no translation calls, no host↔webview protocol change. (req 1.8)
+
 ## [0.6.0] — 2026-07-10
 
 ### Added
 
-- **In-document search (Ctrl+F).** The rendered preview now enables VS Code's native find widget:
-  press `Ctrl+F` / `Cmd+F` while the preview is focused to search, highlight, and step through
-  matches in the displayed text (both columns in bilingual view). Built entirely on the webview
-  panel's native `enableFindWidget` option — no custom search UI, no translation calls. (req 1.8)
+- **In-document search (Ctrl+F).** The rendered preview enables VS Code's native find widget to
+  search the displayed text. *(Superseded by 0.6.1 — the native widget does not function in Code OSS
+  builds such as Kiro.)* (req 1.8)
 
 ## [0.5.9] — 2026-07-06
 

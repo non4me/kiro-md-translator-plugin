@@ -65,9 +65,11 @@ export class ActivationController implements IActivationController, vscode.Custo
         // Keep the preview's DOM alive while its tab is hidden (e.g. a double-click
         // opens the source editor over it): the host does not re-render on the
         // webview's post-reload `ready`, so without this the preview returns blank.
-        // enableFindWidget wires up VS Code's native Ctrl+F/Cmd+F find widget over
-        // the rendered preview text — no custom search UI or host↔webview messages.
-        webviewOptions: { retainContextWhenHidden: true, enableFindWidget: true },
+        // NB: we deliberately do NOT set enableFindWidget — the native find widget
+        // relies on Electron's findInPage, which is inert in Code OSS builds (Kiro)
+        // and would also swallow Ctrl+F before the webview's own handler. In-document
+        // search (req 1.8) is implemented inside the webview via window.find instead.
+        webviewOptions: { retainContextWhenHidden: true },
       }),
       // Settings live in the native settings UI now; the command just reveals it,
       // filtered to this extension. When a workspace/folder is open, land on the

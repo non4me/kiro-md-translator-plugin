@@ -763,6 +763,72 @@ window.addEventListener('message', (event: MessageEvent) => {
   }
 })
 
+// --- in-document search (req 1.8) --------------------------------------------
+// The native webview find widget (enableFindWidget) drives Electron's findInPage,
+// which is inert in Code OSS builds (Kiro): the widget renders but never matches.
+// We drive our own tiny overlay off window.find, which DOES work in OSS builds.
+// Single-match semantics: window.find selects + scrolls to the next occurrence and
+// continues from the current selection, so repeated calls step through matches.
+// window.find is non-standard (absent from lib.dom), so it is typed locally here.
+const findWindow = window as unknown as {
+  find(s: string, caseSensitive: boolean, backwards: boolean, wrapAround: boolean,
+    wholeWord: boolean, searchInFrames: boolean, showDialog: boolean): boolean
+}
+const findBar = document.getElementById('find-bar') as HTMLElement
+const findInput = document.getElementById('find-input') as HTMLInputElement
+const findStatus = document.getElementById('find-status') as HTMLElement
+const findPrev = document.getElementById('find-prev') as HTMLButtonElement
+const findNext = document.getElementById('find-next') as HTMLButtonElement
+const findClose = document.getElementById('find-close') as HTMLButtonElement
+
+function openFindBar(): void {
+  findBar.hidden = false
+  findInput.focus()
+  findInput.select()
+}
+
+function closeFindBar(): void {
+  findBar.hidden = true
+  findStatus.textContent = ''
+  window.getSelection()?.removeAllRanges() // drop the match highlight
+  content.focus()
+}
+
+// `fromTop` collapses the selection first so an edited query searches from the top;
+// next/prev leave the selection in place so window.find steps to the adjacent match.
+function runFind(backwards: boolean, fromTop: boolean): void {
+  const query = findInput.value
+  if (!query) {
+    findStatus.textContent = ''
+    window.getSelection()?.removeAllRanges()
+    return
+  }
+  if (fromTop) window.getSelection()?.removeAllRanges()
+  const found = findWindow.find(query, false, backwards, true, false, false, false)
+  findStatus.textContent = found ? '' : 'No results'
+}
+
+findInput.addEventListener('input', () => runFind(false, true))
+findInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    e.preventDefault()
+    runFind(e.shiftKey, false)
+  } else if (e.key === 'Escape') {
+    e.preventDefault()
+    closeFindBar()
+  }
+})
+findPrev.addEventListener('click', () => runFind(true, false))
+findNext.addEventListener('click', () => runFind(false, false))
+findClose.addEventListener('click', closeFindBar)
+
+document.addEventListener('keydown', (e) => {
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'f' || e.key === 'F')) {
+    e.preventDefault()
+    openFindBar()
+  }
+})
+
 post({ type: 'ready' })
 
 export {} // module scope (isolates top-level consts from other webview scripts)
