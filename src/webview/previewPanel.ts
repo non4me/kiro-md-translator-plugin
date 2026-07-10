@@ -895,7 +895,10 @@ findNext.addEventListener('click', () => gotoMatch(1))
 findClose.addEventListener('click', closeFindBar)
 
 document.addEventListener('keydown', (e) => {
-  if ((e.ctrlKey || e.metaKey) && !e.altKey && (e.key === 'f' || e.key === 'F')) {
+  // e.code is the physical key (layout-independent): e.key would be the character the
+  // current layout produces, so on a non-Latin layout (e.g. Cyrillic) Ctrl+F yields
+  // e.key='а' and the shortcut would silently never fire.
+  if ((e.ctrlKey || e.metaKey) && !e.altKey && e.code === 'KeyF') {
     e.preventDefault()
     openFindBar()
   }

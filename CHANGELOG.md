@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.4] — 2026-07-10
+
+### Fixed
+
+- **Ctrl+F now opens search on any keyboard layout.** The shortcut checked `e.key`, which is the
+  character the active layout produces — so on a non-Latin layout (e.g. Cyrillic) the F key yields
+  `е`/`а` and the shortcut silently never fired. It now matches the physical key via
+  `e.code === 'KeyF'`, layout-independent. (req 1.8)
+
 ## [0.6.3] — 2026-07-10
 
 ### Changed
