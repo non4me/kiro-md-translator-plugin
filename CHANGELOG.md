@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.0] — 2026-07-10
+
+### Added
+
+- **In-document search (Ctrl+F).** The rendered preview now enables VS Code's native find widget:
+  press `Ctrl+F` / `Cmd+F` while the preview is focused to search, highlight, and step through
+  matches in the displayed text (both columns in bilingual view). Built entirely on the webview
+  panel's native `enableFindWidget` option — no custom search UI, no translation calls. (req 1.8)
+
 ## [0.5.9] — 2026-07-06
 
 ### Changed
