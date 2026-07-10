@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.2] — 2026-07-10
+
+### Fixed
+
+- **Find bar keeps focus while typing.** `window.find` moves focus into the matched content, so
+  after the first character the search input lost focus and you couldn't keep typing. Focus is now
+  restored to the input synchronously after each search; the match highlight (a document selection,
+  independent of input focus) stays visible. (req 1.8)
+
 ## [0.6.1] — 2026-07-10
 
 ### Fixed

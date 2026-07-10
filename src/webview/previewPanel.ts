@@ -806,6 +806,10 @@ function runFind(backwards: boolean, fromTop: boolean): void {
   if (fromTop) window.getSelection()?.removeAllRanges()
   const found = findWindow.find(query, false, backwards, true, false, false, false)
   findStatus.textContent = found ? '' : 'No results'
+  // window.find moves focus into the matched content, which would abort typing after
+  // the first character. Restore focus to the input synchronously (the match's
+  // selection highlight is independent of input focus, so it stays visible).
+  findInput.focus()
 }
 
 findInput.addEventListener('input', () => runFind(false, true))
