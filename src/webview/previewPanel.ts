@@ -100,6 +100,7 @@ function showContent(html: string): void {
   // The DOM was replaced → any comment markers are gone. Pull fresh comment data so
   // the host re-anchors and re-emits; this covers every re-render path uniformly.
   post({ type: 'requestComments' })
+  refreshFind() // the old match ranges point at the detached DOM — recompute if the bar is open
 }
 
 // --- bilingual (two-column) view (req 10) ------------------------------------
@@ -132,6 +133,7 @@ function renderBilingualPanes(): void {
   pairIndex = undefined // the previously highlighted nodes were just detached
   drawBlockControls() // req 10.8: edit/comment icons per block
   post({ type: 'requestComments' }) // fills the comment-icon counts / persistent bubbles
+  refreshFind() // recompute match ranges against the rebuilt bilingual grid
 }
 
 const SVG_NS = 'http://www.w3.org/2000/svg'
@@ -764,16 +766,24 @@ window.addEventListener('message', (event: MessageEvent) => {
 })
 
 // --- in-document search (req 1.8) --------------------------------------------
-// The native webview find widget (enableFindWidget) drives Electron's findInPage,
-// which is inert in Code OSS builds (Kiro): the widget renders but never matches.
-// We drive our own tiny overlay off window.find, which DOES work in OSS builds.
-// Single-match semantics: window.find selects + scrolls to the next occurrence and
-// continues from the current selection, so repeated calls step through matches.
-// window.find is non-standard (absent from lib.dom), so it is typed locally here.
-const findWindow = window as unknown as {
-  find(s: string, caseSensitive: boolean, backwards: boolean, wrapAround: boolean,
-    wholeWord: boolean, searchInFrames: boolean, showDialog: boolean): boolean
-}
+// The native find widget (enableFindWidget) drives Electron's findInPage, inert in
+// Code OSS builds (Kiro). window.find works there but couples highlight + caret +
+// focus into one stateful selection, which fights the input while typing. Instead we
+// split the concern in two INDEPENDENT processes over the CSS Custom Highlight API
+// (paint-only — never touches DOM, focus, or selection):
+//   • HIGHLIGHT (on input): walk text nodes, collect a Range per match, paint them
+//     all via ::highlight(find-matches). Input keeps focus, typing is uninterrupted.
+//   • NAVIGATE (Enter / Shift+Enter / buttons): step a cursor over the Range list,
+//     scroll the current match into view, paint it stronger via ::highlight(find-current).
+// The Highlight API + Highlight ctor are recent (Chromium 105+) and absent from the
+// TS lib, so they are feature-detected and typed locally here.
+interface HighlightLike { priority: number }
+const cssHighlights = (
+  CSS as unknown as { highlights?: { set(n: string, h: HighlightLike): void; delete(n: string): void } }
+).highlights
+const HighlightCtor = (window as unknown as { Highlight?: new (...r: Range[]) => HighlightLike }).Highlight
+const HL_OK = !!cssHighlights && !!HighlightCtor
+
 const findBar = document.getElementById('find-bar') as HTMLElement
 const findInput = document.getElementById('find-input') as HTMLInputElement
 const findStatus = document.getElementById('find-status') as HTMLElement
@@ -781,49 +791,107 @@ const findPrev = document.getElementById('find-prev') as HTMLButtonElement
 const findNext = document.getElementById('find-next') as HTMLButtonElement
 const findClose = document.getElementById('find-close') as HTMLButtonElement
 
+let findRanges: Range[] = []
+let findCursor = -1 // -1 = nothing selected yet; first Navigate lands on the first match
+
+function clearHighlights(): void {
+  cssHighlights?.delete('find-matches')
+  cssHighlights?.delete('find-current')
+  findRanges = []
+  findCursor = -1
+}
+
+function paintCurrent(): void {
+  if (!HL_OK) return
+  const r = findRanges[findCursor]
+  if (r) {
+    const h = new HighlightCtor!(r)
+    h.priority = 1 // wins over find-matches where they overlap
+    cssHighlights!.set('find-current', h)
+  } else {
+    cssHighlights!.delete('find-current')
+  }
+}
+
+function updateFindStatus(): void {
+  const n = findRanges.length
+  findStatus.textContent = !findInput.value ? '' : n === 0 ? 'No results'
+    : findCursor < 0 ? `${n} found` : `${findCursor + 1}/${n}`
+}
+
+// HIGHLIGHT process: recompute + paint all matches for the current query. Pure paint,
+// no scroll, no focus change — so it is safe to run on every keystroke and on re-render.
+function highlightMatches(): void {
+  clearHighlights()
+  const query = findInput.value
+  if (query) {
+    const needle = query.toLowerCase()
+    const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT)
+    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      const hay = (node.nodeValue ?? '').toLowerCase()
+      for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + needle.length)) {
+        const r = document.createRange()
+        r.setStart(node, i)
+        r.setEnd(node, i + needle.length)
+        findRanges.push(r)
+      }
+    }
+    if (HL_OK && findRanges.length) cssHighlights!.set('find-matches', new HighlightCtor!(...findRanges))
+  }
+  updateFindStatus()
+}
+
+function scrollRangeIntoView(r: Range): void {
+  const rect = r.getBoundingClientRect()
+  if (rect.top < 0 || rect.bottom > window.innerHeight) {
+    window.scrollBy({ top: rect.top - window.innerHeight / 2, behavior: 'smooth' })
+  }
+}
+
+// NAVIGATE process: move the cursor to the next/previous match and reveal it. Never
+// touches focus, so the input stays active and Enter keeps stepping.
+function gotoMatch(delta: number): void {
+  if (findRanges.length === 0) return
+  findCursor = findCursor < 0
+    ? (delta < 0 ? findRanges.length - 1 : 0)
+    : (findCursor + delta + findRanges.length) % findRanges.length
+  paintCurrent()
+  updateFindStatus()
+  scrollRangeIntoView(findRanges[findCursor])
+}
+
 function openFindBar(): void {
   findBar.hidden = false
   findInput.focus()
   findInput.select()
+  highlightMatches() // repaint against the current content (e.g. reopened after a re-render)
 }
 
 function closeFindBar(): void {
   findBar.hidden = true
+  clearHighlights()
   findStatus.textContent = ''
-  window.getSelection()?.removeAllRanges() // drop the match highlight
   content.focus()
 }
 
-// `fromTop` collapses the selection first so an edited query searches from the top;
-// next/prev leave the selection in place so window.find steps to the adjacent match.
-function runFind(backwards: boolean, fromTop: boolean): void {
-  const query = findInput.value
-  if (!query) {
-    findStatus.textContent = ''
-    window.getSelection()?.removeAllRanges()
-    return
-  }
-  if (fromTop) window.getSelection()?.removeAllRanges()
-  const found = findWindow.find(query, false, backwards, true, false, false, false)
-  findStatus.textContent = found ? '' : 'No results'
-  // window.find moves focus into the matched content, which would abort typing after
-  // the first character. Restore focus to the input synchronously (the match's
-  // selection highlight is independent of input focus, so it stays visible).
-  findInput.focus()
+// Re-run the highlight after the content DOM is swapped (translate / bilingual / edit)
+// so matches track the freshly rendered text. No-op while the bar is closed.
+function refreshFind(): void {
+  if (!findBar.hidden) highlightMatches()
 }
 
-findInput.addEventListener('input', () => runFind(false, true))
+findInput.addEventListener('input', highlightMatches)
 findInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     e.preventDefault()
-    runFind(e.shiftKey, false)
+    gotoMatch(e.shiftKey ? -1 : 1)
   } else if (e.key === 'Escape') {
     e.preventDefault()
     closeFindBar()
   }
 })
-findPrev.addEventListener('click', () => runFind(true, false))
-findNext.addEventListener('click', () => runFind(false, false))
+findPrev.addEventListener('click', () => gotoMatch(-1))
+findNext.addEventListener('click', () => gotoMatch(1))
 findClose.addEventListener('click', closeFindBar)
 
 document.addEventListener('keydown', (e) => {

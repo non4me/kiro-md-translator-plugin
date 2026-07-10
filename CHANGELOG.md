@@ -3,6 +3,18 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.3] — 2026-07-10
+
+### Changed
+
+- **Search: multi-match highlight decoupled from typing.** Reworked in-document search onto the
+  CSS Custom Highlight API, splitting it into two independent processes. Typing now highlights
+  **all** matches at once and shows the count, without ever moving focus out of the input (the
+  earlier `window.find` approach stole focus, aborting typing). `Enter` / `Shift+Enter` (and ↓ / ↑)
+  navigate between matches, scrolling to and emphasising the current one (`i/N`). Highlighting is
+  paint-only — no DOM mutation — and recomputes when the shown content changes (translate /
+  bilingual / edit). (req 1.8)
+
 ## [0.6.2] — 2026-07-10
 
 ### Fixed

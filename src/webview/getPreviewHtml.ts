@@ -121,6 +121,12 @@ export function getPreviewHtml(
       background: none; color: var(--vscode-foreground); cursor: pointer; opacity: .8; }
     #find-bar button:hover { opacity: 1;
       background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.2)); }
+    /* CSS Custom Highlight API paints the matches (req 1.8): all occurrences dimmed,
+       the current one stronger. Editor find-match theme tokens, with fallbacks. */
+    ::highlight(find-matches) {
+      background: var(--vscode-editor-findMatchHighlightBackground, rgba(234,92,0,.33)); }
+    ::highlight(find-current) {
+      background: var(--vscode-editor-findMatchBackground, rgba(234,92,0,.66)); }
   </style>
 </head>
 <body>
