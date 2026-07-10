@@ -3,6 +3,15 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.6.5] — 2026-07-10
+
+### Fixed
+
+- **Esc reliably closes the search bar.** Escape was handled only on the input, so once focus
+  moved (e.g. after clicking ↓/↑) the webview's default focus-move consumed the key and just
+  shifted focus to a button instead of closing. Esc is now caught in the capture phase on the
+  document while the bar is open, closing it regardless of which control has focus. (req 1.8)
+
 ## [0.6.4] — 2026-07-10
 
 ### Fixed

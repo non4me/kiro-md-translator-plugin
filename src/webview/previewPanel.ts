@@ -885,9 +885,6 @@ findInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     e.preventDefault()
     gotoMatch(e.shiftKey ? -1 : 1)
-  } else if (e.key === 'Escape') {
-    e.preventDefault()
-    closeFindBar()
   }
 })
 findPrev.addEventListener('click', () => gotoMatch(-1))
@@ -903,6 +900,16 @@ document.addEventListener('keydown', (e) => {
     openFindBar()
   }
 })
+// Esc closes the bar, handled in the CAPTURE phase on the document so it wins over the
+// webview's default focus-move (which otherwise just shifts focus to the ↓ button) and
+// works regardless of which find control currently holds focus.
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !findBar.hidden) {
+    e.preventDefault()
+    e.stopPropagation()
+    closeFindBar()
+  }
+}, true)
 
 post({ type: 'ready' })
 
