@@ -343,6 +343,12 @@ function bindHover(): void {
         window.clearTimeout(hoverTimer)
         return
       }
+      // A live selection suppresses the reverse-translation tooltip (req 10.14) — don't
+      // arm it while the user is selecting text; the action toolbar is the only affordance.
+      if (selectionActive()) {
+        window.clearTimeout(hoverTimer)
+        return
+      }
       cancelHide() // returning from the tooltip must not hide it
       if (hoveredEl && hoveredEl !== el) hoveredEl.classList.remove('paragraph-highlight')
       el.classList.add('paragraph-highlight') // < 50 ms (req 7.1)
@@ -604,6 +610,19 @@ function updateSelectionContext(): void {
 }
 document.addEventListener('selectionchange', updateSelectionContext)
 updateSelectionContext() // seed an initial (empty) context
+
+// --- suppress the hover translation/peek while a selection is live (req 10.14) --
+// A drag-select leaves the pointer resting over a block, which would otherwise arm the
+// reverse-translation tooltip right over the text being selected. While text is selected
+// the only affordance is the action toolbar, so any live non-empty selection hides the
+// tooltip and blocks a new one; clearing the selection lets hover translation resume.
+function selectionActive(): boolean {
+  const sel = window.getSelection()
+  return !!sel && !sel.isCollapsed && (sel.toString() ?? '').trim().length > 0
+}
+document.addEventListener('selectionchange', () => {
+  if (selectionActive()) hideTooltipNow() // also clears hoveredEl, so a late reply can't reopen it
+})
 
 // --- cursor toolbar (affordance redesign, stage 2) ---------------------------
 // Edit and new-comment appear by the selection instead of in the gutter. `edit`
