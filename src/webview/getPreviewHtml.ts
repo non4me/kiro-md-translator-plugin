@@ -155,6 +155,11 @@ export function getPreviewHtml(
       background: var(--vscode-editor-findMatchHighlightBackground, rgba(234,92,0,.33)); }
     ::highlight(find-current) {
       background: var(--vscode-editor-findMatchBackground, rgba(234,92,0,.66)); }
+    /* Commented text fragments (affordance redesign, stage 3): a soft persistent tint
+       under every fragment a comment points at. Overlaps are handled natively by the
+       Highlight API. Themed to the editor's selection-highlight token. */
+    ::highlight(comment-fragments) {
+      background: var(--vscode-editor-selectionHighlightBackground, rgba(90,150,90,.25)); }
   </style>
 </head>
 <body>

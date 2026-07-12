@@ -418,6 +418,16 @@ describe('fragment comments (stage 3)', () => {
     expect(s.getThreadComments(0)).toHaveLength(2)
   })
 
+  it('reports each fragment quote to the webview for highlighting', () => {
+    const s = svc(memIO().io)
+    s.reanchor(blocksFrom([text]), text)
+    s.addComment(0, 'fox note', fragOf('fox'))
+    s.addComment(0, 'quick note', fragOf('quick'))
+    const res = s.reanchor(blocksFrom([text]), text)
+    const block = res.forBlocks.find((b) => b.paragraphIndex === 0)!
+    expect(block.fragments?.sort()).toEqual(['fox', 'quick'])
+  })
+
   it('a fragment orphans when its text is gone, even though the block remains', () => {
     const s = svc(memIO().io)
     s.reanchor(blocksFrom([text]), text)

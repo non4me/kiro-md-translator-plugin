@@ -129,10 +129,13 @@ export interface CommentsFile {
   threads: CommentThread[]
 }
 
-/** Per-block comment count sent to the webview to draw the 💬 indicators. */
+/** Per-block comment count sent to the webview to draw the comment markers. `fragments`
+ *  carries the quote of each fragment thread on the block, so the webview can paint a
+ *  highlight over the exact text each comment points at (stage 3). */
 export interface BlockCommentCount {
   paragraphIndex: number
   count: number
+  fragments?: string[]
 }
 
 /** Messages Webview → Extension Host. */

@@ -1,4 +1,7 @@
 /* Preview_Panel webview client (browser sandbox). Vanilla TS, no frameworks. */
+import { trimFragment, type Fragment } from '../fragments'
+import type { FragmentAnchor } from '../types'
+
 declare function acquireVsCodeApi(): { postMessage(message: unknown): void }
 
 const api = acquireVsCodeApi()
@@ -36,6 +39,12 @@ const selComment = document.getElementById('sel-comment') as HTMLButtonElement
 // is the block whose thread modal is open; `threadMode` routes a commentThread
 // reply to either the modal or a hover popover (they can be requested apart).
 let commentCounts = new Map<number, number>()
+// The fragment a NEW comment binds to (formed from the selection when the comment
+// action fires). Undefined for a whole-block comment or an existing-thread open.
+let modalFragment: FragmentAnchor | undefined
+// paragraphIndex → the fragment quotes on that block, so the highlight can be repainted
+// after every content re-render (the DOM is rebuilt, so ranges must be recomputed).
+let blockFragments = new Map<number, string[]>()
 let openThreadIndex = -1
 let threadMode: 'popover' | 'modal' = 'popover'
 let threadReqIndex = -1
@@ -99,7 +108,8 @@ function showContent(html: string): void {
   content.setAttribute('aria-busy', 'false')
   statusEl.textContent = ''
   bindHover()
-  drawBlockControls() // req 10.8: edit/comment gutter icons (the tooltip is translation-only)
+  drawBlockControls() // the gutter comment marker (actions live on the cursor toolbar now)
+  highlightFragments() // repaint fragment highlights on the rebuilt DOM from cached quotes
   // The DOM was replaced → any comment markers are gone. Pull fresh comment data so
   // the host re-anchors and re-emits; this covers every re-render path uniformly.
   post({ type: 'requestComments' })
@@ -494,8 +504,9 @@ function requestThread(index: number, mode: 'popover' | 'modal'): void {
   post({ type: 'requestCommentThread', paragraphIndex: index })
 }
 
-function openCommentModal(index: number): void {
+function openCommentModal(index: number, fragment?: FragmentAnchor): void {
   openThreadIndex = index
+  modalFragment = fragment // undefined when opening an existing thread from the gutter marker
   commentInput.value = ''
   commentList.replaceChildren()
   commentModal.hidden = false
@@ -554,7 +565,7 @@ function startEditComment(item: HTMLElement, c: { id: string; body: string }): v
 commentAdd.addEventListener('click', () => {
   const body = commentInput.value.trim()
   if (!body || openThreadIndex < 0) return
-  post({ type: 'addComment', paragraphIndex: openThreadIndex, body })
+  post({ type: 'addComment', paragraphIndex: openThreadIndex, body, fragment: modalFragment })
   commentInput.value = ''
   refreshOpenThread()
 })
@@ -637,9 +648,29 @@ selEdit.addEventListener('click', () => {
 })
 selComment.addEventListener('click', () => {
   const idx = Number(selToolbar.dataset.blockIndex)
+  // Form the fragment BEFORE hiding the toolbar (the selection is still live here —
+  // the toolbar's mousedown preventDefault kept it from collapsing).
+  const el = homeBlockOfSelection()
+  const fragment = el ? fragmentFromSelection(el) : undefined
   hideSelToolbar()
-  if (Number.isFinite(idx)) openCommentModal(idx)
+  if (Number.isFinite(idx)) openCommentModal(idx, fragment)
 })
+
+/** Build a fragment anchor from the current selection within `blockEl`: the trimmed
+ *  selected text plus the block text immediately around it (to disambiguate a repeat).
+ *  Undefined when the selection trims to nothing (only whitespace/punctuation). */
+function fragmentFromSelection(blockEl: HTMLElement): FragmentAnchor | undefined {
+  const trimmed: Fragment | undefined = trimFragment(window.getSelection()?.toString() ?? '')
+  if (!trimmed) return undefined
+  const blockText = blockEl.textContent ?? ''
+  const at = blockText.indexOf(trimmed.text)
+  if (at < 0) return { quote: trimmed.text, prefix: '', suffix: '' }
+  return {
+    quote: trimmed.text,
+    prefix: blockText.slice(Math.max(0, at - 24), at),
+    suffix: blockText.slice(at + trimmed.text.length, at + trimmed.text.length + 24),
+  }
+}
 // A scroll moves the selection out from under a fixed-position toolbar — hide it.
 content.addEventListener('scroll', hideSelToolbar)
 window.addEventListener('scroll', hideSelToolbar, true)
@@ -755,9 +786,14 @@ window.addEventListener('message', (event: MessageEvent) => {
           : 'High memory usage'
       break
     case 'commentsForBlocks': {
-      const list = (msg.blocks as Array<{ paragraphIndex: number; count: number }>) ?? []
+      const list =
+        (msg.blocks as Array<{ paragraphIndex: number; count: number; fragments?: string[] }>) ?? []
       commentCounts = new Map(list.map((b) => [Number(b.paragraphIndex), Number(b.count)]))
+      blockFragments = new Map(
+        list.filter((b) => b.fragments?.length).map((b) => [Number(b.paragraphIndex), b.fragments!]),
+      )
       updateBlockCommentCounts()
+      highlightFragments()
       break
     }
     case 'commentThread': {
@@ -853,6 +889,44 @@ const cssHighlights = (
 ).highlights
 const HighlightCtor = (window as unknown as { Highlight?: new (...r: Range[]) => HighlightLike }).Highlight
 const HL_OK = !!cssHighlights && !!HighlightCtor
+
+/** First Range of `needle` within `root`'s text, or undefined. Skips the gutter control
+ *  text. Matches within a single text node (a fragment spanning inline markup is rare and
+ *  simply not painted — never mis-painted). */
+function findTextRange(root: HTMLElement, needle: string): Range | undefined {
+  if (!needle) return undefined
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT)
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.parentElement?.closest('.bctl')) continue
+    const i = (node.nodeValue ?? '').indexOf(needle)
+    if (i >= 0) {
+      const r = document.createRange()
+      r.setStart(node, i)
+      r.setEnd(node, i + needle.length)
+      return r
+    }
+  }
+  return undefined
+}
+
+/** Paint a highlight over every commented fragment (stage 3). Paint-only via the CSS
+ *  Custom Highlight API — no DOM mutation, so the block-index / lineMap contract is
+ *  untouched and overlapping fragments are handled natively. Recomputed after every
+ *  content re-render (the DOM, hence the ranges, is rebuilt). */
+function highlightFragments(): void {
+  if (!HL_OK) return
+  cssHighlights!.delete('comment-fragments')
+  const ranges: Range[] = []
+  for (const el of blocks()) {
+    const quotes = blockFragments.get(Number(el.dataset.paragraphIndex))
+    if (!quotes) continue
+    for (const q of quotes) {
+      const r = findTextRange(el, q)
+      if (r) ranges.push(r)
+    }
+  }
+  if (ranges.length) cssHighlights!.set('comment-fragments', new HighlightCtor!(...ranges))
+}
 
 const findBar = document.getElementById('find-bar') as HTMLElement
 const findInput = document.getElementById('find-input') as HTMLInputElement

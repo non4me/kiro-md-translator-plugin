@@ -180,7 +180,13 @@ export class CommentsService implements ICommentsService {
     const forBlocks: BlockCommentCount[] = []
     for (const [paragraphIndex, arr] of this.live) {
       const count = arr.reduce((n, t) => n + t.comments.length, 0)
-      if (count > 0) forBlocks.push({ paragraphIndex, count })
+      if (count === 0) continue
+      // The quote of every fragment thread on this block, so the webview can highlight
+      // the exact text each comment points at. Whole-block threads contribute none.
+      const fragments = arr
+        .map((t) => t.anchor.fragment?.quote)
+        .filter((q): q is string => typeof q === 'string' && q.length > 0)
+      forBlocks.push(fragments.length ? { paragraphIndex, count, fragments } : { paragraphIndex, count })
     }
     const orphaned = this.data.threads
       .filter((t) => t.orphaned && t.comments.length > 0)
