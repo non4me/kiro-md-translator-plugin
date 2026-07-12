@@ -160,6 +160,16 @@ export function getPreviewHtml(
        Highlight API. Themed to the editor's selection-highlight token. */
     ::highlight(comment-fragments) {
       background: var(--vscode-editor-selectionHighlightBackground, rgba(90,150,90,.25)); }
+    /* Stage 4: the fragment whose popover row is hovered, painted stronger. */
+    ::highlight(comment-fragment-active) {
+      background: var(--vscode-editor-findMatchBackground, rgba(234,92,0,.5)); }
+    /* Group popover: one row per fragment thread on the block. */
+    .cmt-popover { display: flex; flex-direction: column; gap: .1rem;
+      min-width: 11rem; max-width: 22rem; }
+    .cmt-prow { padding: .2rem .4rem; border-radius: 3px; cursor: pointer; font-size: .9em;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .cmt-prow:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,.15)); }
+    .cmt-prow-n { opacity: .6; font-size: .85em; }
   </style>
 </head>
 <body>

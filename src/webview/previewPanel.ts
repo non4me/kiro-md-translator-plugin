@@ -799,29 +799,47 @@ window.addEventListener('message', (event: MessageEvent) => {
     case 'commentThread': {
       const idx = Number(msg.paragraphIndex)
       const comments = (msg.comments as Array<{ id: string; body: string; updatedAt: string }>) ?? []
+      const threads =
+        (msg.threads as Array<{
+          fragment?: string
+          comments: Array<{ id: string; body: string; updatedAt: string }>
+        }>) ?? []
       if (threadMode === 'modal' && openThreadIndex === idx && !commentModal.hidden) {
-        renderCommentList(comments)
-      } else if (threadMode === 'popover' && threadReqIndex === idx && comments.length) {
-        // Read-only peek; anchor to the exact hovered block so in bilingual the popover
-        // opens over the hovered pane, not always the source cell blocks().find returns.
+        // Show only the SELECTED thread — the picked fragment, or the whole-block thread.
+        // A brand-new fragment (no thread yet) shows an empty list; addComment creates it.
+        const thread = modalFragment
+          ? threads.find((t) => t.fragment === modalFragment!.quote)
+          : threads.find((t) => !t.fragment)
+        renderCommentList(thread?.comments ?? (modalFragment ? [] : comments))
+      } else if (threadMode === 'popover' && threadReqIndex === idx && threads.length) {
+        // Group popover (stage 4): one row per fragment. Anchor to the exact hovered
+        // block so in bilingual it opens over the hovered pane, not the source cell.
         const el =
           threadAnchorEl && Number(threadAnchorEl.dataset.paragraphIndex) === idx
             ? threadAnchorEl
             : blocks().find((b) => Number(b.dataset.paragraphIndex) === idx)
         if (el) {
           const box = document.createElement('div')
-          for (const c of comments) {
-            const d = textNode('div', c.body)
-            d.className = 'cmt-body'
-            box.appendChild(d)
+          box.className = 'cmt-popover'
+          for (const t of threads) {
+            const row = document.createElement('div')
+            row.className = 'cmt-prow'
+            const preview = t.fragment ? `“${t.fragment.slice(0, 40)}”` : 'Whole block'
+            row.appendChild(textNode('span', preview))
+            const n = textNode('span', ` · ${t.comments.length}`)
+            n.className = 'cmt-prow-n'
+            row.appendChild(n)
+            // Hovering a row highlights exactly that fragment; clicking opens its thread.
+            row.addEventListener('mouseenter', () => highlightActiveFragment(idx, t.fragment))
+            row.addEventListener('mouseleave', () => highlightActiveFragment(idx, undefined))
+            row.addEventListener('click', () => {
+              highlightActiveFragment(idx, undefined)
+              hideTooltipNow()
+              openCommentModal(idx, t.fragment ? { quote: t.fragment, prefix: '', suffix: '' } : undefined)
+            })
+            box.appendChild(row)
           }
-          const open = document.createElement('button')
-          open.textContent = 'Open comments'
-          open.addEventListener('click', () => {
-            hideTooltipNow()
-            openCommentModal(idx)
-          })
-          openTooltip(el, box, open)
+          openTooltip(el, box)
         }
       }
       break
@@ -926,6 +944,21 @@ function highlightFragments(): void {
     }
   }
   if (ranges.length) cssHighlights!.set('comment-fragments', new HighlightCtor!(...ranges))
+}
+
+/** Paint the ONE fragment a popover row points at, stronger than the resting highlight
+ *  (stage 4). `quote` undefined clears it. */
+function highlightActiveFragment(idx: number, quote: string | undefined): void {
+  if (!HL_OK) return
+  cssHighlights!.delete('comment-fragment-active')
+  if (!quote) return
+  const el = blocks().find((b) => Number(b.dataset.paragraphIndex) === idx)
+  const r = el && findTextRange(el, quote)
+  if (r) {
+    const h = new HighlightCtor!(r)
+    h.priority = 2 // wins over the resting comment-fragments highlight
+    cssHighlights!.set('comment-fragment-active', h)
+  }
 }
 
 const findBar = document.getElementById('find-bar') as HTMLElement

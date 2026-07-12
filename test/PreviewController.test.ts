@@ -326,6 +326,10 @@ describe('PreviewController comments wiring (req 11)', () => {
         calls.push(['getThreadComments', i])
         return [{ id: 'c1', body: 'hi', createdAt: 'T', updatedAt: 'T' }]
       },
+      getThreads: (i: number) => {
+        calls.push(['getThreads', i])
+        return [{ fragment: undefined, comments: [{ id: 'c1', body: 'hi', createdAt: 'T', updatedAt: 'T' }] }]
+      },
       addComment: (i: number, b: string) => {
         calls.push(['addComment', i, b])
         return { id: 'c1', body: b, createdAt: 'T', updatedAt: 'T' }

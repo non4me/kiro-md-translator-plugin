@@ -321,6 +321,7 @@ export class PreviewController implements IPreviewController {
       type: 'commentThread',
       paragraphIndex,
       comments: this.deps.commentsService?.getThreadComments(paragraphIndex) ?? [],
+      threads: this.deps.commentsService?.getThreads(paragraphIndex) ?? [],
     })
   }
 

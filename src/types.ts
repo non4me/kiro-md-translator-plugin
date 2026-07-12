@@ -138,6 +138,13 @@ export interface BlockCommentCount {
   fragments?: string[]
 }
 
+/** One thread on a block, for the group popover (stage 4): the fragment it points at
+ *  (undefined = the whole block) and its comments. */
+export interface ThreadView {
+  fragment?: string
+  comments: Comment[]
+}
+
 /** Messages Webview → Extension Host. */
 export type WebviewMessage =
   | { type: 'ready' }
@@ -195,7 +202,7 @@ export type ExtensionMessage =
   | { type: 'hostToggleTranslate' }
   | { type: 'hostToggleBilingual' }
   | { type: 'commentsForBlocks'; blocks: BlockCommentCount[] }
-  | { type: 'commentThread'; paragraphIndex: number; comments: Comment[] }
+  | { type: 'commentThread'; paragraphIndex: number; comments: Comment[]; threads: ThreadView[] }
   | { type: 'orphanedComments'; threads: Array<{ quote: string; comments: Comment[] }> }
 
 export type ErrorCode =
@@ -340,6 +347,7 @@ export interface ICommentsService {
   load(): Promise<void>
   reanchor(blocks: Block[], sourceText: string): ReanchorResult
   getThreadComments(paragraphIndex: number): Comment[]
+  getThreads(paragraphIndex: number): ThreadView[]
   addComment(paragraphIndex: number, body: string, fragment?: FragmentAnchor): Comment | undefined
   editComment(commentId: string, body: string): void
   deleteComment(commentId: string): void

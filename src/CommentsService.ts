@@ -15,6 +15,7 @@ import type {
   FragmentAnchor,
   ICommentsService,
   ReanchorResult,
+  ThreadView,
 } from './types'
 import { hashString, makeAnchor, matchThread, locateFragment } from './anchoring'
 import { VERSION } from './commentSidecar'
@@ -196,6 +197,13 @@ export class CommentsService implements ICommentsService {
 
   getThreadComments(paragraphIndex: number): Comment[] {
     return (this.live.get(paragraphIndex) ?? []).flatMap((t) => t.comments)
+  }
+
+  /** Each non-empty thread on a block, with the fragment it points at (stage 4 popover). */
+  getThreads(paragraphIndex: number): ThreadView[] {
+    return (this.live.get(paragraphIndex) ?? [])
+      .filter((t) => t.comments.length > 0)
+      .map((t) => ({ fragment: t.anchor.fragment?.quote, comments: t.comments }))
   }
 
   /** Add a comment to a block, or to a text FRAGMENT within it (stage 3). One fragment is
