@@ -265,6 +265,21 @@ describe('PreviewController edit-modal Target prefill (req 7.9)', () => {
     expect(state.providerCalls).toBe(1)
   })
 
+  it('editing a code block fills Target with translated comments, leaving the code intact', async () => {
+    const { controller, posted } = setup()
+    const src = '```js\nconst x = 1 // note\n```'
+    controller.primeRenderState(src, [{ paragraphIndex: 0, startLine: 0, endLine: 2 }], false)
+    controller.onWebviewMessage({ type: 'editParagraph', paragraphIndex: 0 })
+    expect(posted.find((m) => m.type === 'openEditModal')).toMatchObject({ storageText: src })
+    await vi.waitFor(() => {
+      const sync = posted.find((m) => m.type === 'editModalSyncComplete' && m.field === 'target')
+      // The code line is intact; only the comment is translated (never T(const x…)).
+      expect(sync).toMatchObject({ text: expect.stringContaining('const x = 1 //') })
+      expect((sync as { text: string }).text).toContain('T(note)')
+      expect((sync as { text: string }).text).not.toContain('T(const x')
+    })
+  })
+
   it('prefills Target from the cache without an API call on a hit', async () => {
     const { controller, posted, cache, state } = setup()
     cache.set('Hello world.', 'de', 'HALLO Welt.')

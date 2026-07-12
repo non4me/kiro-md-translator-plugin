@@ -120,6 +120,20 @@ describe('TranslationEngine', () => {
     expect(out).toBe('T(Hello world.)')
   })
 
+  it('translateParagraph on a table row translates the cells, not the pipes', async () => {
+    const seen: string[] = []
+    const { engine } = makeEngine(async (segs) => {
+      seen.push(...segs)
+      return segs.map((s) => `T(${s})`)
+    })
+    const out = await engine.translateParagraph('| one | two |', 'en', 'de', new AbortController().signal)
+    // Only the cell text is sent — never the `|` scaffolding.
+    expect(seen).toEqual(['one', 'two'])
+    expect(out).toContain('T(one)')
+    expect(out).toContain('T(two)')
+    expect(out.startsWith('|')).toBe(true)
+  })
+
   it('translateParagraph on a list item that wraps a fence never sends the code', async () => {
     const seen: string[] = []
     const { engine } = makeEngine(async (segs) => {

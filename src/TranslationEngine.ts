@@ -67,6 +67,10 @@ function collectUnits(mdast: AnyNode): Unit[] {
  *  text hides a code fence (a list item wrapping one), which must NOT be sent whole. */
 const CONTAINS_FENCE = /^[ \t]*(`{3,}|~{3,})/m
 
+/** A GFM table row (a `<tr>` block's text). Only the cell text is translatable —
+ *  the `|` scaffolding must survive verbatim. */
+const TABLE_ROW = /^\s*\|.*\|\s*$/
+
 /**
  * Orchestrates the translation pipeline: extract translatable segments, cache
  * lookup, a single batched provider call for misses, structure-preserving
@@ -140,30 +144,58 @@ export class TranslationEngine implements ITranslationEngine {
       )
       return text.slice(0, fence.start) + spliceComments(body, spans, translated) + text.slice(fence.end)
     }
+    // A GFM table row: wrap it as a one-row table so remark splits the cells, then
+    // translate only the cell text and take the row back — the `|` scaffolding is
+    // never sent. (A bare row is not a table without a separator line.)
+    if (TABLE_ROW.test(text)) {
+      const cols = (text.match(/(?<!\\)\|/g)?.length ?? 1) - 1
+      if (cols >= 1) {
+        const row = await this.translateMarkdownFragment(
+          `${text}\n|${' --- |'.repeat(cols)}`,
+          sourceLang,
+          targetLang,
+          signal,
+        )
+        return row === undefined ? text : row.split('\n')[0].trimEnd()
+      }
+    }
     // A block that merely STARTS with prose can still hide a fenced code block — a
     // list item wrapping one. Sending it as a single segment would leak the code to
     // the provider (req 3.7). Route it through the same unit walk instead, which
     // sends only prose + comment text; the reassembled markdown is display-only
     // (hover tooltip / edit-modal target field), never written to disk.
     if (CONTAINS_FENCE.test(text)) {
-      const mdast = this.renderer.parse(text)
-      const units = collectUnits(mdast)
-      if (units.length === 0) return text
-      const translated = await this.translateSegments(
-        units.flatMap((u) => u.segments),
-        sourceLang,
-        targetLang,
-        signal,
-      )
-      let at = 0
-      for (const unit of units) {
-        unit.apply(translated.slice(at, at + unit.segments.length))
-        at += unit.segments.length
-      }
-      return unified().use(remarkGfm).use(remarkStringify).stringify(mdast).trimEnd()
+      const out = await this.translateMarkdownFragment(text, sourceLang, targetLang, signal)
+      return out === undefined ? text : out.trimEnd()
     }
     const [result] = await this.translateSegments([text], sourceLang, targetLang, signal)
     return result
+  }
+
+  /** Parse a markdown fragment, translate its units (text + code comments), and
+   *  serialize it back. Display-only (never written to disk), so the stringify
+   *  round-trip is acceptable here. Returns undefined if there was nothing to translate. */
+  private async translateMarkdownFragment(
+    markdown: string,
+    sourceLang: LanguageCode,
+    targetLang: LanguageCode,
+    signal: AbortSignal,
+  ): Promise<string | undefined> {
+    const mdast = this.renderer.parse(markdown)
+    const units = collectUnits(mdast)
+    if (units.length === 0) return undefined
+    const translated = await this.translateSegments(
+      units.flatMap((u) => u.segments),
+      sourceLang,
+      targetLang,
+      signal,
+    )
+    let at = 0
+    for (const unit of units) {
+      unit.apply(translated.slice(at, at + unit.segments.length))
+      at += unit.segments.length
+    }
+    return unified().use(remarkGfm).use(remarkStringify).stringify(mdast)
   }
 
   replaceParagraphInSource(
