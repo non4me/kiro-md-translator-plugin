@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest'
 import * as vscode from './mocks/vscode'
 import { CommentsService } from '../src/CommentsService'
 import { SidecarBackend, InlineEofBackend, InlineAfterBackend, DraftBackend } from '../src/commentBackends'
-import type { SidecarIO } from '../src/commentSidecar'
+import { parseCommentsFile, type SidecarIO } from '../src/commentSidecar'
 import { parseInline } from '../src/inlineComments'
 import type { Block } from '../src/types'
 
@@ -190,5 +190,71 @@ describe('comment migration', () => {
     expect((source.match(/rmt:comments/g) ?? []).length).toBe(1)
     expect(parseInline(source).threads).toHaveLength(1)
     expect(parseInline(source).threads[0].comments[0].body).toBe('note')
+  })
+})
+
+/**
+ * The safety invariant (req 11.17): an inline target only ever reaches the editor BUFFER.
+ * Clearing the source store at that moment leaves the comments in NEITHER place if the
+ * buffer is never saved — close-without-save, undo, crash. So the source is cleared only
+ * once the target has reached disk.
+ */
+describe('migration durability', () => {
+  const withSave = (io: SidecarIO, src: () => string, set: (t: string) => void, save: () => Promise<boolean>) =>
+    new CommentsService(
+      docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000,
+      src, async (t) => { set(t) }, save,
+    )
+
+  it('an inline target that cannot be saved keeps the sidecar', async () => {
+    const { io, store } = memIO()
+    let source = `Alpha.\n\nBeta.`
+    const svc = withSave(io, () => source, (t) => { source = t }, async () => false) // read-only doc
+    await svc.load()
+    svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
+    svc.addComment(1, 'note')
+    await svc.flush()
+    expect(store.size).toBe(1)
+
+    const prev = svc.currentBackend()
+    svc.setBackend(new InlineAfterBackend())
+    await svc.migrateFrom(prev)
+
+    expect(store.size).toBe(1) // sidecar SURVIVES — the carrier only reached the buffer
+    expect(parseCommentsFile([...store.values()][0]).threads).toHaveLength(1)
+  })
+
+  it('an inline target that saves clears the sidecar', async () => {
+    const { io, store } = memIO()
+    let source = `Alpha.\n\nBeta.`
+    let saves = 0
+    const svc = withSave(io, () => source, (t) => { source = t }, async () => { saves++; return true })
+    await svc.load()
+    svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
+    svc.addComment(1, 'note')
+    await svc.flush()
+
+    const prev = svc.currentBackend()
+    svc.setBackend(new InlineAfterBackend())
+    await svc.migrateFrom(prev)
+
+    expect(store.size).toBe(0)
+    expect(saves).toBeGreaterThan(0)
+    expect(source).toContain('rmt:comments')
+  })
+
+  it('an empty comment set never saves the document', async () => {
+    const { io } = memIO()
+    let source = `Alpha.\n\nBeta.`
+    let saves = 0
+    const svc = withSave(io, () => source, (t) => { source = t }, async () => { saves++; return true })
+    await svc.load()
+    svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
+
+    const prev = svc.currentBackend()
+    svc.setBackend(new InlineAfterBackend())
+    await svc.migrateFrom(prev)
+
+    expect(saves).toBe(0) // switching with nothing to move must not touch the file
   })
 })

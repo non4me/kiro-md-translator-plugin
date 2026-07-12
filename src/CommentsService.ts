@@ -45,6 +45,10 @@ export class CommentsService implements ICommentsService {
     private readonly flushMs: number = FLUSH_MS,
     private readonly getSource: () => string = () => '',
     private readonly writeSource?: (text: string) => Promise<void>,
+    /** Flush the document to disk. Resolves false when it could not be saved (read-only
+     *  file, write error). Absent ⇒ the target is treated as durable — that is only true
+     *  for unit tests and sidecar-only setups; the extension always injects it. */
+    private readonly saveSource?: () => Promise<boolean>,
   ) {}
 
   async load(): Promise<void> {
@@ -190,13 +194,24 @@ export class CommentsService implements ICommentsService {
    * storage medium actually changed — for an inline→inline placement change the
    * flush already stripped the old carriers and rewrote them in place, so clearing
    * would wipe what we just wrote. Thread ids are stable, so nothing is lost.
+   *
+   * SAFETY INVARIANT (req 11.17): an inline target only reaches the editor BUFFER —
+   * `writeSource` is a WorkspaceEdit, not a save. Clearing the source at that moment
+   * leaves the comments in NEITHER place if the buffer is never saved (close-without-
+   * save, undo, crash). So: clear only once the target has reached disk. A failed save
+   * keeps the source intact and the move is simply retried later.
    */
   async migrateFrom(previous: CommentBackend): Promise<void> {
     await this.flush() // writes to the NEW backend (this.backend)
     if (previous.medium === this.backend.medium) return // inline↔inline placement: already re-homed in place
+    if (this.backend.medium === 'inline' && this.data.threads.length > 0) {
+      const durable = this.saveSource ? await this.saveSource() : true
+      if (!durable) return // target not on disk → the source stays; nothing is lost
+    }
     const cleared = await previous.clear(this.getSource())
     if (cleared.newSource !== undefined && this.writeSource && cleared.newSource !== this.getSource()) {
       await this.writeSource(cleared.newSource)
+      await this.saveSource?.() // finish the move: the stripped document must reach disk too
     }
   }
 

@@ -327,6 +327,10 @@ export class ActivationController implements IActivationController, vscode.Custo
       undefined, // default flushMs
       () => document.getText(),
       applyEdit,
+      // `applyEdit` only dirties the buffer. migrateFrom's safety invariant needs a real
+      // save before it may clear the source store — otherwise a close-without-save would
+      // lose comments that exist in neither place.
+      () => Promise.resolve(document.save()),
     )
 
     const deps: PreviewDeps = {
