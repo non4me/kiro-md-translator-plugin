@@ -12,7 +12,13 @@ import { t } from './l10n'
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyNode = any
 
-const BLOCK_TAGS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li'])
+// `pre` (fenced/indented code block) and `tr` (table row) are indexed too, so they
+// get a data-paragraph-index and a lineMap entry — hence gutter icons, hover
+// translation, scroll sync and editability. `table`/`th`/`td` are NOT indexed: the
+// row is the unit, and indexing the wrapper too would double-count. Source and
+// translated renders both filter on this one set, which keeps their indices in
+// lock-step — the contract scroll sync and surgical write-back depend on.
+const BLOCK_TAGS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'pre', 'tr'])
 
 /** Resolves a relative image path to a URL the webview can load. */
 export type ImageResolver = (relativePath: string, fileDir: vscode.Uri) => string
