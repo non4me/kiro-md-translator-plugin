@@ -39,6 +39,13 @@ describe('SettingsManager', () => {
     expect(cfg.storageLanguage).toBe('en')
   })
 
+  it('defaults the code highlight theme to auto and reads a configured value (req 12)', () => {
+    expect(new SettingsManager().getCodeHighlightTheme()).toBe('auto')
+    __setConfig('kiro-md-translator', 'codeHighlightTheme', 'monokai')
+    expect(new SettingsManager().getCodeHighlightTheme()).toBe('monokai')
+    expect(new SettingsManager().getConfig().codeHighlightTheme).toBe('monokai')
+  })
+
   it('addGlossaryTerm appends a new do-not-translate term (req 3.19)', async () => {
     const s = new SettingsManager()
     expect(await s.addGlossaryTerm('GitHub')).toBe(true)

@@ -1,5 +1,6 @@
 import * as vscode from 'vscode'
 import type {
+  CodeHighlightTheme,
   CommentPlacement,
   CommentStorage,
   ISettingsManager,
@@ -64,6 +65,10 @@ export class SettingsManager implements ISettingsManager {
     return this.cfg().get<boolean>('commentsEnabled', true)
   }
 
+  getCodeHighlightTheme(): CodeHighlightTheme {
+    return this.cfg().get<CodeHighlightTheme>('codeHighlightTheme', 'auto')
+  }
+
   /** Do-not-translate terms (req 3.18). Blank/whitespace entries are dropped. */
   getGlossary(): string[] {
     const value = this.cfg().get<string[]>('glossary', [])
@@ -101,6 +106,7 @@ export class SettingsManager implements ISettingsManager {
       commentStorage: this.getCommentStorage(),
       commentPlacement: this.getCommentPlacement(),
       commentAutoImport: this.getCommentAutoImport(),
+      codeHighlightTheme: this.getCodeHighlightTheme(),
     }
   }
 

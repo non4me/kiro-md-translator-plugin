@@ -21,6 +21,7 @@ import { t } from './l10n'
 import { PreviewController, type PreviewDeps } from './PreviewController'
 import { createProvider } from './providers/ProviderFactory'
 import { getPreviewHtml } from './webview/getPreviewHtml'
+import { codeThemeCss } from './highlightThemes'
 import { getNonce } from './webview/nonce'
 import type { IActivationController, ITranslationProvider, ProviderType, WebviewMessage } from './types'
 
@@ -449,7 +450,7 @@ export class ActivationController implements IActivationController, vscode.Custo
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'out', 'webview', 'previewPanel.js'),
     )
-    webview.html = getPreviewHtml(webview, scriptUri, nonce)
+    webview.html = getPreviewHtml(webview, scriptUri, nonce, codeThemeCss(this.settings.getCodeHighlightTheme()))
 
     const renderer = new MarkdownRenderer((rel) =>
       webview.asWebviewUri(vscode.Uri.joinPath(docDir, rel)).toString(),
@@ -553,6 +554,15 @@ export class ActivationController implements IActivationController, vscode.Custo
         commentsService.setBackend(next)
         // migrateFrom's writeSource already fires onDidChangeTextDocument; this guarantees a UI refresh even when migration produced no text change (empty comment set).
         void commentsService.migrateFrom(prev).then(() => controller.onDocumentChange(document)).catch(() => {})
+      }),
+      // Re-paint the code-highlight theme live when the setting changes (req 12). Only
+      // the stylesheet swaps — no re-render, no host round-trip for editor theme changes
+      // (the `auto` pair is scoped by the webview's vscode-light/dark body class).
+      this.settings.onDidChangeSettings(() => {
+        void webview.postMessage({
+          type: 'setCodeTheme',
+          css: codeThemeCss(this.settings.getCodeHighlightTheme()),
+        })
       }),
     ]
 

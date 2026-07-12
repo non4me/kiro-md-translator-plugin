@@ -36,6 +36,18 @@ export type ProviderType = 'deepl' | 'google' | 'custom' | 'ollama'
 export type TranslationMode = 'on-demand' | 'automatic'
 export type CommentStorage = 'sidecar' | 'inline' | 'draft'
 export type CommentPlacement = 'after-paragraph' | 'end-of-file'
+/** Code-block syntax highlighting theme (req 12). `auto` follows the editor's
+ *  light/dark theme; `off` disables colouring; the rest are named highlight.js themes. */
+export type CodeHighlightTheme =
+  | 'auto'
+  | 'off'
+  | 'github-dark'
+  | 'github-light'
+  | 'monokai'
+  | 'nord'
+  | 'atom-one-dark'
+  | 'dracula'
+  | 'solarized-light'
 
 export interface PluginConfig {
   targetLanguage: LanguageCode | undefined
@@ -53,6 +65,8 @@ export interface PluginConfig {
   commentPlacement: CommentPlacement
   /** Merge comments left in the other storages into the selected one on open (req 11.17). */
   commentAutoImport: boolean
+  /** Syntax-highlighting theme for code blocks (req 12). Default 'auto'. */
+  codeHighlightTheme: CodeHighlightTheme
 }
 
 // ---------------------------------------------------------------------------
@@ -169,6 +183,7 @@ export type WebviewMessage =
 /** Messages Extension Host → Webview. */
 export type ExtensionMessage =
   | { type: 'renderContent'; html: string; lineMap: LineMapping[]; display?: boolean }
+  | { type: 'setCodeTheme'; css: string }
   | { type: 'translationStart' }
   | { type: 'translationComplete'; translatedHtml: string }
   | { type: 'translationError'; code: number; message: string }
@@ -310,6 +325,8 @@ export interface ISettingsManager {
   getCommentPlacement(): CommentPlacement
   /** Whether the per-block comment control is shown (req 11.13). Default true. */
   getCommentsEnabled(): boolean
+  /** Code-block syntax highlighting theme (req 12). Default 'auto'. */
+  getCodeHighlightTheme(): CodeHighlightTheme
   /** Append a do-not-translate term to the Glossary setting (req 3.19). Resolves
    *  to true if it was added, false if blank or already present. */
   addGlossaryTerm(term: string): Promise<boolean>

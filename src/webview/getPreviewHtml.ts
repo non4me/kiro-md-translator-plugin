@@ -9,6 +9,7 @@ export function getPreviewHtml(
   webview: vscode.Webview,
   scriptUri: vscode.Uri,
   nonce: string,
+  codeThemeCss: string,
 ): string {
   const csp = [
     `default-src 'none'`,
@@ -174,7 +175,18 @@ export function getPreviewHtml(
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .cmt-prow:hover { background: var(--vscode-list-hoverBackground, rgba(128,128,128,.15)); }
     .cmt-prow-n { opacity: .6; font-size: .85em; }
+    /* Base code-block look (req 12) — applies even when the highlight theme is "off".
+       A syntax theme, when set, paints .hljs colours on top of this. */
+    pre { margin: .6rem 0; }
+    pre code { display: block; overflow-x: auto; padding: .7rem .9rem; border-radius: 4px;
+      background: var(--vscode-textCodeBlock-background, rgba(127,127,127,.12));
+      font-size: .92em; line-height: 1.45; tab-size: 2; }
+    code { font-family: var(--vscode-editor-font-family, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace); }
+    :not(pre) > code { padding: .12em .32em; border-radius: 3px;
+      background: var(--vscode-textCodeBlock-background, rgba(127,127,127,.12)); }
   </style>
+  <!-- Swappable syntax-highlight theme (req 12); replaced live by the setCodeTheme message. -->
+  <style id="code-theme">${codeThemeCss}</style>
 </head>
 <body>
   <header>

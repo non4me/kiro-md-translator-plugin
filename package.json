@@ -244,6 +244,50 @@
             "markdownDescription": "When a document is opened, look in the other comment storages and move anything found there into the selected one — so changing Comment Storage never makes comments disappear.\n\n⚠️ When storage is `inline`, this **modifies and saves the Markdown document itself**.\n\n[Import all project comments into the current storage](command:kiro-md-translator.importComments)"
           }
         }
+      },
+      {
+        "title": "%config.section.appearance%",
+        "order": 6,
+        "properties": {
+          "kiro-md-translator.codeHighlightTheme": {
+            "type": "string",
+            "enum": [
+              "auto",
+              "off",
+              "github-dark",
+              "github-light",
+              "monokai",
+              "nord",
+              "atom-one-dark",
+              "dracula",
+              "solarized-light"
+            ],
+            "enumItemLabels": [
+              "Auto (follow editor theme)",
+              "Off (no colouring)",
+              "GitHub Dark",
+              "GitHub Light",
+              "Monokai",
+              "Nord",
+              "Atom One Dark",
+              "Dracula",
+              "Solarized Light"
+            ],
+            "enumDescriptions": [
+              "Follow the editor's light/dark theme automatically.",
+              "No syntax colouring — plain monospaced code.",
+              "GitHub Dark.",
+              "GitHub Light.",
+              "Monokai (dark).",
+              "Nord (dark).",
+              "Atom One Dark.",
+              "Dracula (dark).",
+              "Solarized Light."
+            ],
+            "default": "auto",
+            "markdownDescription": "Syntax-highlighting theme for fenced code blocks in the preview. **Auto** follows the editor's light/dark theme; **Off** shows plain monospaced code. Only the affected preview is re-coloured — no document is modified."
+          }
+        }
       }
     ]
   },
@@ -262,14 +306,15 @@
     "@types/sinon": "^17.0.3",
     "@types/vscode": "^1.85.0",
     "esbuild": "^0.21.0",
+    "fast-check": "^3.19.0",
     "sinon": "^18.0.0",
     "typescript": "^5.4.0",
-    "vitest": "^2.0.0",
-    "fast-check": "^3.19.0"
+    "vitest": "^2.0.0"
   },
   "dependencies": {
     "hast-util-from-html": "^2.0.0",
     "mdast-util-to-string": "^4.0.0",
+    "rehype-highlight": "^7.0.2",
     "rehype-sanitize": "^6.0.0",
     "rehype-stringify": "^10.0.0",
     "remark-gfm": "^4.0.0",

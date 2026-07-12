@@ -41,6 +41,26 @@ describe('MarkdownRenderer', () => {
     expect(lineMap[3].startLine).toBe(lineMap[3].endLine)
   })
 
+  it('syntax-highlights fenced code blocks (req 12): tags tokens with hljs classes', async () => {
+    const r = new MarkdownRenderer()
+    const { html } = await r.render('```js\nconst x = 1 // note\n```\n', dir)
+    expect(html).toContain('class="hljs') // the code element is marked highlighted
+    expect(html).toContain('hljs-comment') // the comment is coloured as a comment (translation synergy)
+    expect(html).toMatch(/hljs-keyword|hljs-number/) // at least one code token span
+  })
+
+  it('does not highlight inline code (req 12): only fenced blocks are coloured', async () => {
+    const r = new MarkdownRenderer()
+    const { html } = await r.render('a `const x` inline.\n', dir)
+    expect(html).toContain('<code>const x</code>') // inline code left untouched, no hljs spans
+  })
+
+  it('leaves an unknown code language untouched (req 12): no throw, no colouring', async () => {
+    const r = new MarkdownRenderer()
+    const { html } = await r.render('```not-a-language\nplain text body\n```\n', dir)
+    expect(html).toContain('plain text body') // rendered fine, pipeline did not throw
+  })
+
   it('shows the empty-content placeholder for an empty file', async () => {
     const r = new MarkdownRenderer()
     const { html, lineMap } = await r.render('   \n', dir)

@@ -3,7 +3,8 @@ import { unified } from 'unified'
 import remarkParse from 'remark-parse'
 import remarkGfm from 'remark-gfm'
 import remarkRehype from 'remark-rehype'
-import rehypeSanitize from 'rehype-sanitize'
+import rehypeHighlight from 'rehype-highlight'
+import rehypeSanitize, { defaultSchema } from 'rehype-sanitize'
 import rehypeStringify from 'rehype-stringify'
 import { visit } from 'unist-util-visit'
 import type { IMarkdownRenderer, LineMapping, RenderResult } from './types'
@@ -19,6 +20,20 @@ type AnyNode = any
 // translated renders both filter on this one set, which keeps their indices in
 // lock-step — the contract scroll sync and surgical write-back depend on.
 const BLOCK_TAGS = new Set(['p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'li', 'pre', 'tr'])
+
+// rehype-highlight runs BEFORE sanitize and tags code with `hljs`/`hljs-*` classes on
+// `<code>`/`<span>`. The default schema would strip those, so we widen it to keep
+// `className` on exactly those two elements. `className` is inert (no script; the CSP
+// blocks scripts and no `style`/event attributes are allowed), so this cannot execute
+// anything — it only lets the theme stylesheet (req 12) find its hooks.
+const SANITIZE_SCHEMA = {
+  ...defaultSchema,
+  attributes: {
+    ...defaultSchema.attributes,
+    code: ['className'],
+    span: ['className'],
+  },
+}
 
 /** Resolves a relative image path to a URL the webview can load. */
 export type ImageResolver = (relativePath: string, fileDir: vscode.Uri) => string
@@ -53,9 +68,16 @@ export class MarkdownRenderer implements IMarkdownRenderer {
 
   /** Convert an existing (possibly translated) mdast tree to a RenderResult. */
   renderMdast(mdast: AnyNode, fileDir: vscode.Uri): RenderResult {
-    const hast = unified().use(remarkRehype).runSync(mdast) as AnyNode
+    // Syntax highlighting (req 12) runs on the hast BEFORE sanitize: it only adds
+    // `<span class="hljs-*">` inside `<code>`, so it never shifts a `<pre>`/block
+    // position and the lineMap stays in lock-step. `detect` colours fenced blocks
+    // that declare no language; an unknown language is left untouched (no throw).
+    const hast = unified()
+      .use(remarkRehype)
+      .use(rehypeHighlight, { detect: true })
+      .runSync(mdast) as AnyNode
     const lineMap = this.buildLineMap(hast)
-    const sanitized = unified().use(rehypeSanitize).runSync(hast) as AnyNode
+    const sanitized = unified().use(rehypeSanitize, SANITIZE_SCHEMA).runSync(hast) as AnyNode
     this.annotate(sanitized)
     this.resolveImages(sanitized, fileDir)
     const html = unified().use(rehypeStringify).stringify(sanitized)

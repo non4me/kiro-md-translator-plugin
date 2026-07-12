@@ -743,6 +743,12 @@ window.addEventListener('message', (event: MessageEvent) => {
     case 'hideTooltip':
       hideTooltipNow()
       break
+    case 'setCodeTheme': {
+      // Swap the highlight theme stylesheet in place — no re-render (req 12).
+      const themeEl = document.getElementById('code-theme')
+      if (themeEl) themeEl.textContent = String(msg.css)
+      break
+    }
     case 'editorScrollSync': {
       const el = blocks().find((b) => Number(b.dataset.paragraphIndex) === msg.paragraphIndex)
       if (el) {
