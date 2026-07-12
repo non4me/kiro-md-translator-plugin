@@ -188,7 +188,7 @@ export interface ThreadView {
 /** Messages Webview → Extension Host. */
 export type WebviewMessage =
   | { type: 'ready' }
-  | { type: 'dblclick' }
+  | { type: 'openOriginal' }
   | { type: 'translateRequest' }
   | { type: 'paragraphHover'; paragraphIndex: number }
   | { type: 'paragraphHoverEnd'; paragraphIndex: number }

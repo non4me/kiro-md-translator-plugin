@@ -236,7 +236,7 @@ export class PreviewController implements IPreviewController {
         // The toolbar hint links here when required settings are missing (req 3.20).
         void this.deps.executeCommand?.('kiro-md-translator.openSettings')
         break
-      case 'dblclick':
+      case 'openOriginal':
         this.enterEditMode()
         break
       case 'paragraphHover':

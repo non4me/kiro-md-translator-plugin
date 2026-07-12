@@ -230,7 +230,7 @@ function drawBlockControls(): void {
     const ctl = document.createElement('span')
     ctl.className = 'bctl'
     // Only a double-click on an ICON is ours; the rest of .bctl is the transparent gutter
-    // bridge below, and double-clicking empty gutter must still reach #content (open source).
+    // bridge below, and double-clicking empty gutter must still reach #content (select the block).
     ctl.addEventListener('dblclick', (e) => {
       if ((e.target as Element | null)?.closest('button')) e.stopPropagation()
     })
@@ -459,7 +459,37 @@ settingsLink.addEventListener('click', (e) => {
   e.preventDefault()
   post({ type: 'openSettings' })
 })
-content.addEventListener('dblclick', () => post({ type: 'dblclick' }))
+/** Select a whole block's text (skipping its gutter controls) so its Edit/Comment toolbar
+ *  appears over it (req 1.9). Falls back to the block's full contents if it has no text node. */
+function selectBlock(block: HTMLElement): void {
+  const sel = window.getSelection()
+  if (!sel) return
+  let range = wholeBlockRange(block)
+  if (!range) {
+    range = document.createRange()
+    range.selectNodeContents(block)
+  }
+  sel.removeAllRanges()
+  sel.addRange(range)
+}
+
+// Double-click selects the whole block it lands on (req 1.9), surfacing its Edit/Comment
+// toolbar. A triple-click (or more) opens the original document in the editor — Edit_Mode
+// (req 1.2). A dblclick on a gutter icon is stopped upstream (drawBlockControls) so it
+// never reaches here.
+content.addEventListener('dblclick', (e) => {
+  const block = (e.target as Element | null)?.closest<HTMLElement>('[data-paragraph-index]')
+  if (!block || !content.contains(block)) return
+  e.preventDefault()
+  selectBlock(block)
+})
+content.addEventListener('click', (e) => {
+  if (e.detail < 3) return // only a triple-click (or more) opens the original
+  if ((e.target as Element | null)?.closest('.bctl')) return // ignore the gutter icons
+  window.getSelection()?.removeAllRanges() // drop the block selection the double-click made
+  hideSelToolbar()
+  post({ type: 'openOriginal' })
+})
 
 // Bilingual pair highlight (req 10.7). Delegated on the stable #content element so
 // it survives pane re-renders; a no-op outside bilingual view. Uses the shared
