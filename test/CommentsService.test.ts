@@ -450,3 +450,46 @@ describe('fragment comments (stage 3)', () => {
     expect(res.forBlocks.find((b) => b.paragraphIndex === 0)?.count).toBe(1)
   })
 })
+
+describe('multi-block span comments (stage 4)', () => {
+  const texts = ['Alpha one', 'Beta two', 'Gamma three']
+  const source = texts.join('\n\n')
+  const startFrag = { quote: 'one', prefix: 'Alpha ', suffix: '' } // selected tail of the first block
+  const endFrag = { quote: 'Gamma', prefix: '', suffix: ' three' } // selected head of the last block
+
+  it('a span comment marks the FIRST block and highlights the whole range', () => {
+    const s = svc(memIO().io)
+    s.reanchor(blocksFrom(texts), source) // sets lastBlocks so makeSpanAnchor can build
+    s.addComment(0, 'across the list', startFrag, 2, endFrag)
+    const res = s.reanchor(blocksFrom(texts), source)
+    expect(res.forBlocks).toEqual([
+      { paragraphIndex: 0, count: 1, fragments: ['one'] }, // marker + tail highlight on the first block
+      { paragraphIndex: 1, count: 0, whole: true }, // middle block highlighted whole, NO marker
+      { paragraphIndex: 2, count: 0, fragments: ['Gamma'] }, // last block: head highlight, NO marker
+    ])
+  })
+
+  it('a second comment on the same span joins one thread (count grows on the first block only)', () => {
+    const s = svc(memIO().io)
+    s.reanchor(blocksFrom(texts), source)
+    s.addComment(0, 'a', startFrag, 2, endFrag)
+    s.addComment(0, 'b', startFrag, 2, endFrag)
+    const res = s.reanchor(blocksFrom(texts), source)
+    expect(res.forBlocks.find((b) => b.paragraphIndex === 0)).toEqual({
+      paragraphIndex: 0,
+      count: 2,
+      fragments: ['one'],
+    })
+  })
+
+  it('a span orphans (never a partial highlight) when its end block is deleted', () => {
+    const s = svc(memIO().io)
+    s.reanchor(blocksFrom(texts), source)
+    s.addComment(0, 'across the list', startFrag, 2, endFrag)
+    const shrunk = ['Alpha one', 'Beta two'] // the last block (the span's end) is gone
+    const res = s.reanchor(blocksFrom(shrunk), shrunk.join('\n\n'))
+    expect(res.forBlocks).toEqual([]) // no marker, no highlight anywhere
+    expect(res.orphaned).toHaveLength(1)
+    expect(res.orphaned[0].comments[0].body).toBe('across the list')
+  })
+})

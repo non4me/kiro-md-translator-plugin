@@ -5,7 +5,7 @@
  * now points to, or that it is orphaned. It prefers an orphan over a wrong
  * match — the trust-critical invariant — and never mutates the source.
  */
-import type { Block, CommentAnchor, FragmentAnchor, ResolvedLocation } from './types'
+import type { Block, CommentAnchor, FragmentAnchor, ResolvedLocation, ResolvedSpan } from './types'
 
 /** Block context kept on each side of a fragment, to disambiguate a repeat. */
 export const FRAGMENT_CTX = 24
@@ -121,6 +121,59 @@ export function resolveThread(anchor: CommentAnchor, blocks: Block[]): ResolvedL
   if (!anchor.fragment) return { paragraphIndex, start: 0, end: block.text.length }
   const loc = locateFragment(anchor.fragment, block.text)
   return loc ? { paragraphIndex, start: loc.start, end: loc.end } : undefined
+}
+
+/** Build a MULTI-BLOCK comment anchor (req 10.17) from the two selection ends: the first
+ *  block (`startIndex`, `startFragment` = the selected tail of that block) and the last block
+ *  (`endIndex`, `endFragment` = the selected head). Undefined if either block is gone. The
+ *  fragments are supplied by the caller (built from the rendered text, exactly as a single-block
+ *  fragment is), so anchoring re-uses the same fragment machinery for both ends. */
+export function makeSpanAnchor(
+  blocks: Block[],
+  startIndex: number,
+  startFragment: FragmentAnchor,
+  endIndex: number,
+  endFragment: FragmentAnchor,
+): CommentAnchor | undefined {
+  const first = makeAnchor(blocks, startIndex)
+  const last = makeAnchor(blocks, endIndex)
+  if (!first || !last) return undefined
+  first.fragment = startFragment
+  first.end = {
+    quote: last.quote,
+    prefix: last.prefix,
+    suffix: last.suffix,
+    hintLine: last.hintLine,
+    quoteHash: last.quoteHash,
+    fragment: endFragment,
+  }
+  return first
+}
+
+/** Resolve a multi-block comment's two ends against the current document (req 10.17). BOTH the
+ *  first and last block must re-match AND their fragment text must still exist, and the ends must
+ *  stay in order (end strictly after start). Otherwise the whole span is orphaned — never a
+ *  partial, wrong or inverted span (the same "orphan over a wrong match" rule as single blocks). */
+export function resolveSpan(anchor: CommentAnchor, blocks: Block[]): ResolvedSpan | undefined {
+  if (!anchor.end || !anchor.fragment) return undefined
+  const startIndex = matchThread(anchor, blocks)
+  if (startIndex === undefined) return undefined
+  const startBlock = blocks.find((b) => b.paragraphIndex === startIndex)
+  if (!startBlock || !locateFragment(anchor.fragment, startBlock.text)) return undefined
+  // The far end is a block anchor in its own right → resolve it with the same machinery.
+  const endAnchor: CommentAnchor = {
+    quote: anchor.end.quote,
+    prefix: anchor.end.prefix,
+    suffix: anchor.end.suffix,
+    hintLine: anchor.end.hintLine,
+    quoteHash: anchor.end.quoteHash,
+  }
+  const endIndex = matchThread(endAnchor, blocks)
+  if (endIndex === undefined) return undefined
+  const endBlock = blocks.find((b) => b.paragraphIndex === endIndex)
+  if (!endBlock || !locateFragment(anchor.end.fragment, endBlock.text)) return undefined
+  if (endIndex <= startIndex) return undefined // collapsed or inverted → orphan
+  return { startIndex, endIndex }
 }
 
 /** Surrounding-context similarity of a candidate block to the anchor (0..2). */

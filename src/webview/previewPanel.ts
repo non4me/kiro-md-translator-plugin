@@ -42,9 +42,14 @@ let commentCounts = new Map<number, number>()
 // The fragment a NEW comment binds to (formed from the selection when the comment
 // action fires). Undefined for a whole-block comment or an existing-thread open.
 let modalFragment: FragmentAnchor | undefined
+// For a multi-block comment (req 10.17): the last block + its head fragment. Undefined ⇒ single block.
+let modalEndIndex: number | undefined
+let modalEndFragment: FragmentAnchor | undefined
 // paragraphIndex → the fragment quotes on that block, so the highlight can be repainted
 // after every content re-render (the DOM is rebuilt, so ranges must be recomputed).
 let blockFragments = new Map<number, string[]>()
+// Blocks lying WHOLLY inside a multi-block span (req 10.17) — highlighted entirely, no marker.
+let wholeSpanBlocks = new Set<number>()
 let openThreadIndex = -1
 let threadMode: 'popover' | 'modal' = 'popover'
 let threadReqIndex = -1
@@ -512,9 +517,16 @@ function requestThread(index: number, mode: 'popover' | 'modal'): void {
   post({ type: 'requestCommentThread', paragraphIndex: index })
 }
 
-function openCommentModal(index: number, fragment?: FragmentAnchor): void {
+function openCommentModal(
+  index: number,
+  fragment?: FragmentAnchor,
+  endIndex?: number,
+  endFragment?: FragmentAnchor,
+): void {
   openThreadIndex = index
   modalFragment = fragment // undefined when opening an existing thread from the gutter marker
+  modalEndIndex = endIndex // set only for a fresh multi-block comment (req 10.17)
+  modalEndFragment = endFragment
   commentInput.value = ''
   commentList.replaceChildren()
   commentModal.hidden = false
@@ -573,7 +585,14 @@ function startEditComment(item: HTMLElement, c: { id: string; body: string }): v
 commentAdd.addEventListener('click', () => {
   const body = commentInput.value.trim()
   if (!body || openThreadIndex < 0) return
-  post({ type: 'addComment', paragraphIndex: openThreadIndex, body, fragment: modalFragment })
+  post({
+    type: 'addComment',
+    paragraphIndex: openThreadIndex,
+    body,
+    fragment: modalFragment,
+    endIndex: modalEndIndex,
+    endFragment: modalEndFragment,
+  })
   commentInput.value = ''
   refreshOpenThread()
 })
@@ -676,16 +695,24 @@ selComment.addEventListener('click', () => {
   const sel = selectedBlocks()
   const first = sel[0]
   const idx = Number(first?.dataset.paragraphIndex)
-  const fragment = first ? fragmentFromSelection(first) : undefined
+  let fragment: FragmentAnchor | undefined
+  let endIndex: number | undefined
+  let endFragment: FragmentAnchor | undefined
+  if (sel.length > 1) {
+    const span = spanCommentPayload(sel) // multi-block: anchor to both ends of the selection
+    if (span) ({ startFragment: fragment, endIndex, endFragment } = span)
+  } else if (first) {
+    fragment = fragmentFromSelection(first)
+  }
   hideSelToolbar()
-  if (Number.isFinite(idx)) openCommentModal(idx, fragment)
+  if (Number.isFinite(idx)) openCommentModal(idx, fragment, endIndex, endFragment)
 })
 
-/** Build a fragment anchor from the current selection within `blockEl`: the trimmed
- *  selected text plus the block text immediately around it (to disambiguate a repeat).
- *  Undefined when the selection trims to nothing (only whitespace/punctuation). */
-function fragmentFromSelection(blockEl: HTMLElement): FragmentAnchor | undefined {
-  const trimmed: Fragment | undefined = trimFragment(window.getSelection()?.toString() ?? '')
+/** Build a fragment anchor from `rawText` (a selection, or a sub-range of it) within `blockEl`:
+ *  the trimmed text plus the block text immediately around it (to disambiguate a repeat).
+ *  Undefined when the text trims to nothing (only whitespace/punctuation). */
+function fragmentFromText(blockEl: HTMLElement, rawText: string): FragmentAnchor | undefined {
+  const trimmed: Fragment | undefined = trimFragment(rawText)
   if (!trimmed) return undefined
   const blockText = blockEl.textContent ?? ''
   const at = blockText.indexOf(trimmed.text)
@@ -694,6 +721,39 @@ function fragmentFromSelection(blockEl: HTMLElement): FragmentAnchor | undefined
     quote: trimmed.text,
     prefix: blockText.slice(Math.max(0, at - 24), at),
     suffix: blockText.slice(at + trimmed.text.length, at + trimmed.text.length + 24),
+  }
+}
+
+/** The single-block fragment: the whole current selection within `blockEl`. */
+function fragmentFromSelection(blockEl: HTMLElement): FragmentAnchor | undefined {
+  return fragmentFromText(blockEl, window.getSelection()?.toString() ?? '')
+}
+
+/** For a selection spanning >1 block (req 10.17), the two-ended span payload: the first block's
+ *  selected TAIL and the last block's selected HEAD, each as a fragment built from rendered text
+ *  (exactly as the single-block fragment is, so the host anchors both ends the same way). */
+function spanCommentPayload(
+  selBlocks: HTMLElement[],
+): { startIndex: number; startFragment: FragmentAnchor; endIndex: number; endFragment: FragmentAnchor } | undefined {
+  const sel = window.getSelection()
+  if (!sel || sel.rangeCount === 0) return undefined
+  const range = sel.getRangeAt(0)
+  const firstBlock = selBlocks[0]
+  const lastBlock = selBlocks[selBlocks.length - 1]
+  // Tail of the first block: from the selection start to the end of that block.
+  const rStart = range.cloneRange()
+  rStart.setEnd(firstBlock, firstBlock.childNodes.length)
+  const startFragment = fragmentFromText(firstBlock, rStart.toString())
+  // Head of the last block: from the start of that block to the selection end.
+  const rEnd = range.cloneRange()
+  rEnd.setStart(lastBlock, 0)
+  const endFragment = fragmentFromText(lastBlock, rEnd.toString())
+  if (!startFragment || !endFragment) return undefined
+  return {
+    startIndex: Number(firstBlock.dataset.paragraphIndex),
+    startFragment,
+    endIndex: Number(lastBlock.dataset.paragraphIndex),
+    endFragment,
   }
 }
 // A scroll moves the selection out from under a fixed-position toolbar — hide it.
@@ -821,11 +881,13 @@ window.addEventListener('message', (event: MessageEvent) => {
       break
     case 'commentsForBlocks': {
       const list =
-        (msg.blocks as Array<{ paragraphIndex: number; count: number; fragments?: string[] }>) ?? []
+        (msg.blocks as Array<{ paragraphIndex: number; count: number; fragments?: string[]; whole?: boolean }>) ??
+        []
       commentCounts = new Map(list.map((b) => [Number(b.paragraphIndex), Number(b.count)]))
       blockFragments = new Map(
         list.filter((b) => b.fragments?.length).map((b) => [Number(b.paragraphIndex), b.fragments!]),
       )
+      wholeSpanBlocks = new Set(list.filter((b) => b.whole).map((b) => Number(b.paragraphIndex)))
       updateBlockCommentCounts()
       highlightFragments()
       break
@@ -971,14 +1033,39 @@ function highlightFragments(): void {
   cssHighlights!.delete('comment-fragments')
   const ranges: Range[] = []
   for (const el of blocks()) {
-    const quotes = blockFragments.get(Number(el.dataset.paragraphIndex))
-    if (!quotes) continue
-    for (const q of quotes) {
-      const r = findTextRange(el, q)
+    const idx = Number(el.dataset.paragraphIndex)
+    const quotes = blockFragments.get(idx)
+    if (quotes) {
+      for (const q of quotes) {
+        const r = findTextRange(el, q)
+        if (r) ranges.push(r)
+      }
+    }
+    // A block wholly inside a multi-block span (req 10.17): highlight its entire text.
+    if (wholeSpanBlocks.has(idx)) {
+      const r = wholeBlockRange(el)
       if (r) ranges.push(r)
     }
   }
   if (ranges.length) cssHighlights!.set('comment-fragments', new HighlightCtor!(...ranges))
+}
+
+/** A range spanning a block's own text (skipping the gutter controls) — for a middle block that
+ *  lies entirely inside a multi-block comment span. */
+function wholeBlockRange(el: HTMLElement): Range | undefined {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  let first: Text | undefined
+  let last: Text | undefined
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.parentElement?.closest('.bctl')) continue // skip the gutter icons' text
+    if (!first) first = node as Text
+    last = node as Text
+  }
+  if (!first || !last) return undefined
+  const r = document.createRange()
+  r.setStart(first, 0)
+  r.setEnd(last, (last.nodeValue ?? '').length)
+  return r
 }
 
 /** Paint the ONE fragment a popover row points at, stronger than the resting highlight

@@ -110,6 +110,29 @@ export interface CommentAnchor {
   hintLine: number
   quoteHash: string
   fragment?: FragmentAnchor
+  /** Present ⇒ a MULTI-BLOCK comment (req 10.17). The primary anchor above pins the FIRST
+   *  block (its `fragment` is the selected tail of that block); `end` pins the LAST block
+   *  (its `fragment` is the selected head). Everything between is the span. */
+  end?: SpanEnd
+}
+
+/** The far end of a multi-block comment: the last block's own content anchor plus the
+ *  fragment (the selection's head within it). Same shape as a block anchor, resolved by
+ *  the same `matchThread`/`locateFragment` machinery. */
+export interface SpanEnd {
+  quote: string
+  prefix: string
+  suffix: string
+  hintLine: number
+  quoteHash: string
+  fragment: FragmentAnchor
+}
+
+/** A resolved multi-block span: the first and last block it now covers (start < end).
+ *  Undefined from `resolveSpan` means orphaned — never a partial or inverted span. */
+export interface ResolvedSpan {
+  startIndex: number
+  endIndex: number
 }
 
 /** Where a thread resolves in the current document: the block and, for a fragment
@@ -150,6 +173,9 @@ export interface BlockCommentCount {
   paragraphIndex: number
   count: number
   fragments?: string[]
+  /** True for a block that lies WHOLLY inside a multi-block span (req 10.17) — the webview
+   *  highlights the entire block, with no marker (its `count` is 0). */
+  whole?: boolean
 }
 
 /** One thread on a block, for the group popover (stage 4): the fragment it points at
@@ -175,7 +201,16 @@ export type WebviewMessage =
   | { type: 'displayModeChanged'; displaying: 'source' | 'translation' }
   | { type: 'requestComments' }
   | { type: 'requestCommentThread'; paragraphIndex: number }
-  | { type: 'addComment'; paragraphIndex: number; body: string; fragment?: FragmentAnchor }
+  | {
+      type: 'addComment'
+      paragraphIndex: number
+      body: string
+      fragment?: FragmentAnchor
+      // Multi-block comment (req 10.17): the last block index + the selection's head fragment
+      // within it. The `paragraphIndex`/`fragment` above are the first block + its tail.
+      endIndex?: number
+      endFragment?: FragmentAnchor
+    }
   | { type: 'editComment'; commentId: string; body: string }
   | { type: 'deleteComment'; commentId: string }
   | { type: 'openSettings' }
@@ -365,7 +400,13 @@ export interface ICommentsService {
   reanchor(blocks: Block[], sourceText: string): ReanchorResult
   getThreadComments(paragraphIndex: number): Comment[]
   getThreads(paragraphIndex: number): ThreadView[]
-  addComment(paragraphIndex: number, body: string, fragment?: FragmentAnchor): Comment | undefined
+  addComment(
+    paragraphIndex: number,
+    body: string,
+    fragment?: FragmentAnchor,
+    endIndex?: number,
+    endFragment?: FragmentAnchor,
+  ): Comment | undefined
   editComment(commentId: string, body: string): void
   deleteComment(commentId: string): void
   flush(): Thenable<void>

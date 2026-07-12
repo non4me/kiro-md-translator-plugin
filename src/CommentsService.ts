@@ -17,7 +17,7 @@ import type {
   ReanchorResult,
   ThreadView,
 } from './types'
-import { hashString, makeAnchor, matchThread, locateFragment } from './anchoring'
+import { hashString, makeAnchor, matchThread, locateFragment, makeSpanAnchor, resolveSpan } from './anchoring'
 import { VERSION } from './commentSidecar'
 import { SidecarBackend, type CommentBackend } from './commentBackends'
 
@@ -37,6 +37,10 @@ export class CommentsService implements ICommentsService {
   private lastSource = ''
   /** paragraphIndex → the live threads resolved there (usually one). */
   private live = new Map<number, CommentThread[]>()
+  /** Multi-block span highlights beyond the first block (req 10.17): a block's extra
+   *  highlight quotes (the last block's head) and/or a whole-block flag (a middle block).
+   *  Recomputed every `reanchor` — carries NO comment count (the marker stays on block one). */
+  private spanExtra = new Map<number, { fragments: string[]; whole: boolean }>()
   private flushTimer: ReturnType<typeof setTimeout> | undefined
   /** Backends to pull comments in from at load (auto-import). Empty ⇒ feature off. */
   private importSources: CommentBackend[] = []
@@ -138,10 +142,36 @@ export class CommentsService implements ICommentsService {
     this.lastBlocks = blocks
     this.lastSource = sourceText
     this.live = new Map()
+    this.spanExtra = new Map()
     const fast = this.data.docHash !== '' && this.data.docHash === hashString(sourceText)
 
     for (const thread of this.data.threads) {
       if (thread.comments.length === 0) continue
+      // Multi-block span thread (req 10.17): resolve BOTH ends together or orphan the whole
+      // thread. The comment lives on the FIRST block (marker + count); the highlight is spread
+      // to the middle blocks (whole) and the last block (its head-fragment quote).
+      if (thread.anchor.end) {
+        const span = resolveSpan(thread.anchor, blocks)
+        if (!span) {
+          thread.orphaned = true
+          continue
+        }
+        thread.orphaned = false
+        const arr = this.live.get(span.startIndex) ?? []
+        arr.push(thread)
+        this.live.set(span.startIndex, arr)
+        for (const b of blocks) {
+          if (b.paragraphIndex > span.startIndex && b.paragraphIndex < span.endIndex) {
+            const e = this.spanExtra.get(b.paragraphIndex) ?? { fragments: [], whole: false }
+            e.whole = true
+            this.spanExtra.set(b.paragraphIndex, e)
+          }
+        }
+        const endEntry = this.spanExtra.get(span.endIndex) ?? { fragments: [], whole: false }
+        endEntry.fragments.push(thread.anchor.end.fragment.quote)
+        this.spanExtra.set(span.endIndex, endEntry)
+        continue
+      }
       let idx: number | undefined
       if (fast) {
         idx = blocks.find((b) => b.startLine === thread.anchor.hintLine)?.paragraphIndex
@@ -178,16 +208,33 @@ export class CommentsService implements ICommentsService {
   /** Current indicator counts + orphaned threads, WITHOUT re-matching (used after a
    *  pure add/edit/delete that cannot change anchoring). */
   snapshot(): ReanchorResult {
-    const forBlocks: BlockCommentCount[] = []
+    // Accumulate per block: the comment count (drives the marker), the highlight quotes, and a
+    // whole-block flag. A span contributes its count to the FIRST block only; the middle/last
+    // blocks pick up highlight-only entries from `spanExtra` (count 0 → no marker).
+    const byBlock = new Map<number, { count: number; fragments: string[]; whole: boolean }>()
     for (const [paragraphIndex, arr] of this.live) {
       const count = arr.reduce((n, t) => n + t.comments.length, 0)
       if (count === 0) continue
-      // The quote of every fragment thread on this block, so the webview can highlight
-      // the exact text each comment points at. Whole-block threads contribute none.
+      // The quote of every fragment thread on this block (for a span, the first block's tail),
+      // so the webview can highlight the exact text each comment points at.
       const fragments = arr
         .map((t) => t.anchor.fragment?.quote)
         .filter((q): q is string => typeof q === 'string' && q.length > 0)
-      forBlocks.push(fragments.length ? { paragraphIndex, count, fragments } : { paragraphIndex, count })
+      byBlock.set(paragraphIndex, { count, fragments, whole: false })
+    }
+    for (const [paragraphIndex, extra] of this.spanExtra) {
+      const e = byBlock.get(paragraphIndex) ?? { count: 0, fragments: [], whole: false }
+      e.fragments.push(...extra.fragments)
+      e.whole = e.whole || extra.whole
+      byBlock.set(paragraphIndex, e)
+    }
+    const forBlocks: BlockCommentCount[] = []
+    for (const [paragraphIndex, e] of byBlock) {
+      if (e.count === 0 && e.fragments.length === 0 && !e.whole) continue
+      const bc: BlockCommentCount = { paragraphIndex, count: e.count }
+      if (e.fragments.length) bc.fragments = e.fragments
+      if (e.whole) bc.whole = true
+      forBlocks.push(bc)
     }
     const orphaned = this.data.threads
       .filter((t) => t.orphaned && t.comments.length > 0)
@@ -206,23 +253,40 @@ export class CommentsService implements ICommentsService {
       .map((t) => ({ fragment: t.anchor.fragment?.quote, comments: t.comments }))
   }
 
-  /** Add a comment to a block, or to a text FRAGMENT within it (stage 3). One fragment is
-   *  one thread: a second comment on the same fragment (identical quote) joins its
-   *  discussion; a comment on a different fragment — even an overlapping one — starts a new
-   *  thread. A whole-block comment (no fragment) joins/creates the block's fragment-less thread. */
-  addComment(paragraphIndex: number, body: string, fragment?: FragmentAnchor): Comment | undefined {
+  /** Add a comment to a block, a text FRAGMENT within it (stage 3), or a multi-block SPAN
+   *  (req 10.17, when `endIndex`/`endFragment` are given — the last block + its head fragment).
+   *  One fragment/span is one thread: a repeat comment on the same fragment (or the same pair of
+   *  span ends) joins its discussion; a different fragment — even an overlapping one — starts a new
+   *  thread. A whole-block comment (no fragment) joins/creates the block's fragment-less thread.
+   *  A span binds to its first block (marker + count there); the highlight spreads across the range. */
+  addComment(
+    paragraphIndex: number,
+    body: string,
+    fragment?: FragmentAnchor,
+    endIndex?: number,
+    endFragment?: FragmentAnchor,
+  ): Comment | undefined {
     const text = body.trim()
     if (!text) return undefined
     const ts = this.now()
     const comment: Comment = { id: this.genId(), createdAt: ts, updatedAt: ts, body: text }
     const threads = this.live.get(paragraphIndex) ?? []
-    let thread = fragment
-      ? threads.find((t) => t.anchor.fragment?.quote === fragment.quote)
-      : threads.find((t) => !t.anchor.fragment)
+    // A span (req 10.17) is identified by BOTH its end fragments; single-block by the one fragment.
+    const isSpan = fragment !== undefined && endIndex !== undefined && endFragment !== undefined
+    let thread = isSpan
+      ? threads.find(
+          (t) =>
+            t.anchor.fragment?.quote === fragment.quote && t.anchor.end?.fragment.quote === endFragment.quote,
+        )
+      : fragment
+        ? threads.find((t) => t.anchor.fragment?.quote === fragment.quote && !t.anchor.end)
+        : threads.find((t) => !t.anchor.fragment)
     if (!thread) {
-      const anchor = makeAnchor(this.lastBlocks, paragraphIndex)
-      if (!anchor) return undefined // block no longer present → cannot anchor
-      if (fragment) anchor.fragment = fragment
+      const anchor = isSpan
+        ? makeSpanAnchor(this.lastBlocks, paragraphIndex, fragment, endIndex, endFragment)
+        : makeAnchor(this.lastBlocks, paragraphIndex)
+      if (!anchor) return undefined // block(s) no longer present → cannot anchor
+      if (!isSpan && fragment) anchor.fragment = fragment // makeSpanAnchor already set it for a span
       thread = { anchor, orphaned: false, comments: [] }
       this.data.threads.push(thread)
       this.live.set(paragraphIndex, [...threads, thread])

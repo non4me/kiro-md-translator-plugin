@@ -272,7 +272,13 @@ export class PreviewController implements IPreviewController {
         this.postThread(message.paragraphIndex)
         break
       case 'addComment':
-        this.deps.commentsService?.addComment(message.paragraphIndex, message.body, message.fragment)
+        this.deps.commentsService?.addComment(
+          message.paragraphIndex,
+          message.body,
+          message.fragment,
+          message.endIndex,
+          message.endFragment,
+        )
         this.emitComments()
         break
       case 'editComment':

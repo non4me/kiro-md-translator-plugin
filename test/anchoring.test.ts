@@ -7,8 +7,10 @@ import {
   matchThread,
   locateFragment,
   resolveThread,
+  makeSpanAnchor,
+  resolveSpan,
 } from '../src/anchoring'
-import type { Block } from '../src/types'
+import type { Block, FragmentAnchor } from '../src/types'
 
 function blocksFrom(texts: string[]): Block[] {
   let line = 0
@@ -182,5 +184,76 @@ describe('fragment anchoring (stage 3)', () => {
 
   it('locateFragment returns undefined when the quote is absent', () => {
     expect(locateFragment({ quote: 'zzz', prefix: '', suffix: '' }, 'no such text here')).toBeUndefined()
+  })
+})
+
+describe('span anchoring (multi-block, stage 4)', () => {
+  const blocks = blocksFrom(['First block alpha', 'Middle block beta', 'Last block gamma'])
+  const startFrag: FragmentAnchor = { quote: 'alpha', prefix: 'First block ', suffix: '' }
+  const endFrag: FragmentAnchor = { quote: 'Last', prefix: '', suffix: ' block gamma' }
+
+  it('makeSpanAnchor pins the first block as primary and the last block as `end`', () => {
+    const a = makeSpanAnchor(blocks, 0, startFrag, 2, endFrag)!
+    expect(a.quote).toBe('First block alpha') // primary anchor is the FIRST block
+    expect(a.fragment).toEqual(startFrag) // its fragment is the selected tail
+    expect(a.end?.quote).toBe('Last block gamma') // the far end is the LAST block
+    expect(a.end?.fragment).toEqual(endFrag) // its fragment is the selected head
+  })
+
+  it('resolveSpan returns the two in-order ends when both still exist', () => {
+    const a = makeSpanAnchor(blocks, 0, startFrag, 2, endFrag)!
+    expect(resolveSpan(a, blocks)).toEqual({ startIndex: 0, endIndex: 2 })
+  })
+
+  it('resolveSpan orphans when the end block is gone (never a partial span)', () => {
+    const a = makeSpanAnchor(blocks, 0, startFrag, 2, endFrag)!
+    const edited = blocksFrom(['First block alpha', 'Middle block beta']) // last block deleted
+    expect(resolveSpan(a, edited)).toBeUndefined()
+  })
+
+  it('resolveSpan orphans when an end fragment text is gone, even if its block still matches', () => {
+    const a = makeSpanAnchor(blocks, 0, startFrag, 2, endFrag)!
+    const edited = blocksFrom(['First block alpha', 'Middle block beta', 'Final block gamma']) // 'Last' → 'Final'
+    expect(matchThread({ ...a.end! }, edited)).toBe(2) // the last block still fuzzy-matches…
+    expect(resolveSpan(a, edited)).toBeUndefined() // …but its head fragment 'Last' is gone → orphan
+  })
+
+  it('resolveSpan orphans when the ends invert after a reorder', () => {
+    const a = makeSpanAnchor(blocks, 0, startFrag, 2, endFrag)!
+    const swapped = blocksFrom(['Last block gamma', 'Middle block beta', 'First block alpha'])
+    // start now matches index 2, end matches index 0 → end < start → orphan, never a backwards span
+    expect(resolveSpan(a, swapped)).toBeUndefined()
+  })
+
+  // Feature: kiro-md-translator-plugin, Property 30: multi-block span anchoring resolves both ends or orphans, never a wrong span
+  it('Property 30: a span resolves to strictly in-order ends, or orphans — never a wrong span', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.string({ minLength: 1, maxLength: 8 }), { minLength: 3, maxLength: 8 }),
+        fc.nat(),
+        fc.nat(),
+        fc.boolean(),
+        (rawTexts, a, b, corruptEnd) => {
+          const texts = rawTexts.map((t, i) => `B${i}-${t}`) // unique → unambiguous matching
+          const bl = blocksFrom(texts)
+          const n = texts.length
+          let s = a % n
+          let e = b % n
+          if (s > e) [s, e] = [e, s]
+          const sf: FragmentAnchor = { quote: texts[s], prefix: '', suffix: '' }
+          const ef: FragmentAnchor = corruptEnd
+            ? { quote: 'ZZZ_ABSENT_ZZZ', prefix: '', suffix: '' }
+            : { quote: texts[e], prefix: '', suffix: '' }
+          const anchor = makeSpanAnchor(bl, s, sf, e, ef)!
+          const span = resolveSpan(anchor, bl)
+          if (corruptEnd || s === e) {
+            expect(span).toBeUndefined() // end fragment gone, or collapsed to one block → orphan
+          } else {
+            expect(span).toEqual({ startIndex: s, endIndex: e }) // exactly the two ends, in order
+          }
+        },
+      ),
+      { numRuns: 100 },
+    )
   })
 })
