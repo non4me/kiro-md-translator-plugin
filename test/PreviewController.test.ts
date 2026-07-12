@@ -75,7 +75,7 @@ describe('PreviewController reverse translation (req 7.3/7.4)', () => {
     controller.primeRenderState('Hello world.', lineMap, true)
     await controller.handleHover(0)
     expect(posted.find((m) => m.type === 'showTooltip')).toMatchObject({
-      reverseTranslation: 'Hello world.',
+      html: expect.stringContaining('Hello world.'),
     })
     expect(state.providerCalls).toBe(0)
   })
@@ -86,10 +86,22 @@ describe('PreviewController reverse translation (req 7.3/7.4)', () => {
     await controller.handleHover(0) // miss → provider
     expect(state.providerCalls).toBe(1)
     expect(posted.find((m) => m.type === 'showTooltip')).toMatchObject({
-      reverseTranslation: 'T(Hello world.)',
+      html: expect.stringContaining('T(Hello world.)'),
     })
     await controller.handleHover(0) // hit → no extra provider call
     expect(state.providerCalls).toBe(1)
+  })
+
+  it('renders a fenced code-block peek as HTML — a real <pre>, no ``` markers', async () => {
+    const code = '```bash\ndocker run -d \\\n  --name x neo4j:5\n```'
+    const { controller, posted } = setup()
+    controller.primeRenderState(code, [{ paragraphIndex: 0, startLine: 0, endLine: 3 }], true)
+    await controller.handleHover(0)
+    const tip = posted.find((m) => m.type === 'showTooltip') as { html: string } | undefined
+    expect(tip?.html).toMatch(/<pre[^>]*>/) // a real code block, not collapsed text
+    expect(tip?.html).toContain('docker run')
+    // The fence delimiters are consumed by the parser — never shown as literal text.
+    expect(tip?.html).not.toContain('```')
   })
 })
 
@@ -112,7 +124,7 @@ describe('PreviewController display-mode toggle (Translate <-> Original)', () =>
     await controller.handleHover(0)
     expect(state.providerCalls).toBe(0) // treated as translation → reverse is the known source
     expect(posted.find((m) => m.type === 'showTooltip')).toMatchObject({
-      reverseTranslation: 'Hello world.',
+      html: expect.stringContaining('Hello world.'),
     })
   })
 })

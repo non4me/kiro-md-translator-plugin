@@ -172,7 +172,7 @@ export type ExtensionMessage =
   | { type: 'translationStart' }
   | { type: 'translationComplete'; translatedHtml: string }
   | { type: 'translationError'; code: number; message: string }
-  | { type: 'showTooltip'; paragraphIndex: number; reverseTranslation: string }
+  | { type: 'showTooltip'; paragraphIndex: number; html: string }
   | { type: 'tooltipLoading'; paragraphIndex: number }
   | { type: 'tooltipError'; paragraphIndex: number; message: string }
   | { type: 'hideTooltip' }

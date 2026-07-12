@@ -727,8 +727,11 @@ window.addEventListener('message', (event: MessageEvent) => {
     }
     case 'showTooltip': {
       if (hoveredEl && Number(hoveredEl.dataset.paragraphIndex) === Number(msg.paragraphIndex)) {
-        // Translation-only: edit/comment moved to the gutter icons (req 10.8, unified).
-        openTooltip(hoveredEl, textNode('div', String(msg.reverseTranslation)))
+        // The peek is host-rendered, host-sanitized HTML — a true mini preview, so a
+        // code block keeps its <pre> (newlines, no ``` markers) instead of flat text.
+        const box = document.createElement('div')
+        setSanitizedHtml(box, String(msg.html))
+        openTooltip(hoveredEl, box)
       }
       break
     }

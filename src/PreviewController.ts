@@ -332,7 +332,7 @@ export class PreviewController implements IPreviewController {
 
     if (this.displayingTranslation) {
       // Preview shows the translation → reverse is the KNOWN source; no API (req 7.3).
-      this.deps.post({ type: 'showTooltip', paragraphIndex, reverseTranslation: paraText })
+      this.deps.post({ type: 'showTooltip', paragraphIndex, html: await this.tooltipHtml(paraText) })
       return
     }
 
@@ -341,7 +341,7 @@ export class PreviewController implements IPreviewController {
     if (!cfg.targetLanguage) return
     const cached = this.deps.cache.get(paraText, cfg.targetLanguage)
     if (cached !== undefined) {
-      this.deps.post({ type: 'showTooltip', paragraphIndex, reverseTranslation: cached })
+      this.deps.post({ type: 'showTooltip', paragraphIndex, html: await this.tooltipHtml(cached) })
       return
     }
     this.deps.post({ type: 'tooltipLoading', paragraphIndex })
@@ -354,10 +354,19 @@ export class PreviewController implements IPreviewController {
         ac.signal,
       )
       this.deps.cache.set(paraText, cfg.targetLanguage, res)
-      this.deps.post({ type: 'showTooltip', paragraphIndex, reverseTranslation: res })
+      this.deps.post({ type: 'showTooltip', paragraphIndex, html: await this.tooltipHtml(res) })
     } catch {
       this.deps.post({ type: 'tooltipError', paragraphIndex, message: t('Failed to load the translation') })
     }
+  }
+
+  /** Render a hover peek's Markdown to sanitized HTML so the tooltip is a true mini
+   *  preview, not raw markup: a fenced code block becomes a real `<pre>` (whitespace
+   *  preserved, ``` delimiters gone) instead of collapsed one-line text. The peek is
+   *  a single block's source/translation, so this is one small parse — no API call. */
+  private async tooltipHtml(markdown: string): Promise<string> {
+    const { html } = await this.deps.renderer.render(markdown, this.fileDir())
+    return html
   }
 
   /** Modal bidirectional auto-sync (reqs 7.9–7.11). */

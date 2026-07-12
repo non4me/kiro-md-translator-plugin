@@ -90,9 +90,13 @@ export function getPreviewHtml(
     .pair-highlight { position: relative; background: var(--vscode-editor-hoverHighlightBackground); }
     .pair-highlight::before { content: ''; position: absolute; top: 0; bottom: 0; left: -.5rem;
       width: 3px; background: var(--vscode-focusBorder); }
-    #tooltip { position: absolute; max-width: 28rem; padding: .5rem .7rem; border-radius: 4px;
+    #tooltip { position: absolute; max-width: 28rem; max-height: 20rem; overflow: auto;
+      padding: .5rem .7rem; border-radius: 4px;
       background: var(--vscode-editorHoverWidget-background);
       border: 1px solid var(--vscode-editorHoverWidget-border); display: none; z-index: 10; }
+    /* The peek renders a whole block; drop its outer margins so it sits flush in the box. */
+    #tooltip > :first-child { margin-top: 0; }
+    #tooltip > :last-child { margin-bottom: 0; }
     /* Shown state is display:flex (centres the box); the initial [hidden] attribute
        + the [hidden] rule below keep it hidden until openEditModal removes hidden. */
     #modal, #comment-modal { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex;
