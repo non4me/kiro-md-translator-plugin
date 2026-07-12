@@ -28,6 +28,9 @@ const commentInput = document.getElementById('comment-input') as HTMLTextAreaEle
 const commentAdd = document.getElementById('comment-add') as HTMLButtonElement
 const commentClose = document.getElementById('comment-close') as HTMLButtonElement
 const orphanedEl = document.getElementById('orphaned') as HTMLElement
+const selToolbar = document.getElementById('sel-toolbar') as HTMLElement
+const selEdit = document.getElementById('sel-edit') as HTMLButtonElement
+const selComment = document.getElementById('sel-comment') as HTMLButtonElement
 
 // Comments (req 11). `commentCounts` drives the 💬 indicators; `openThreadIndex`
 // is the block whose thread modal is open; `threadMode` routes a commentThread
@@ -175,27 +178,22 @@ function icon(pathD: string | string[]): SVGElement {
 // button's title/aria-label (set by updateButtonLabel/updateBilingualBtn).
 translateBtn.appendChild(icon(TRANSLATE_ICON))
 bilingualBtn.appendChild(icon(BILINGUAL_ICON))
+selEdit.appendChild(icon(EDIT_ICON))
+selComment.appendChild(icon(COMMENT_ICON))
 
-/** Draw the edit + comment icon column in the left gutter of every block (req 10.8),
- *  in BOTH single and bilingual view. Edit/comment used to live in the hover tooltip;
- *  they now live here, so the tooltip is translation-only (and in bilingual there is no
- *  tooltip at all, req 10.5). Reuses existing host messages. */
+/** Draw the gutter marker for every block. As of the affordance redesign (stage 2) the
+ *  gutter shows ONLY the existing-comment marker — the edit and new-comment actions moved
+ *  to the cursor toolbar (`#sel-toolbar`) that appears on text selection. The marker stays
+ *  here because it belongs to the block, not the selection: it must be visible without any
+ *  interaction so you can see at a glance which blocks carry comments. Reuses existing host
+ *  messages; works in BOTH single and bilingual view. */
 function drawBlockControls(): void {
   for (const el of blocks()) {
     // Skip a block nested inside ANOTHER indexed block (a loose list's inner <p> — its
-    // <li> already carries the icons) so the two don't draw an overlapping duplicate.
+    // <li> already carries the marker) so the two don't draw an overlapping duplicate.
     if (el.parentElement?.closest('[data-paragraph-index]')) continue
     if (el.querySelector(':scope > .bctl')) continue // fresh render, but stay idempotent
     const idx = Number(el.dataset.paragraphIndex)
-
-    const edit = document.createElement('button')
-    edit.className = 'bctl-edit'
-    edit.title = 'Edit'
-    edit.appendChild(icon(EDIT_ICON))
-    edit.addEventListener('click', (e) => {
-      e.stopPropagation()
-      post({ type: 'editParagraph', paragraphIndex: idx })
-    })
 
     const cmt = document.createElement('button')
     cmt.className = 'bctl-comment'
@@ -220,7 +218,7 @@ function drawBlockControls(): void {
     ctl.addEventListener('dblclick', (e) => {
       if ((e.target as Element | null)?.closest('button')) e.stopPropagation()
     })
-    ctl.append(edit, cmt)
+    ctl.append(cmt)
     // Pull the icon row into the pane's left gutter regardless of the block's own
     // indentation (list items / blockquotes sit further right). The indent is padding-
     // based, so it is width-independent and stays correct across resizes.
@@ -596,6 +594,56 @@ function updateSelectionContext(): void {
 document.addEventListener('selectionchange', updateSelectionContext)
 updateSelectionContext() // seed an initial (empty) context
 
+// --- cursor toolbar (affordance redesign, stage 2) ---------------------------
+// Edit and new-comment appear by the selection instead of in the gutter. `edit`
+// targets the whole home block the selection fell into; `comment` (stage 3) will
+// bind to the trimmed selection — until then it opens the block's comment modal.
+/** The indexed block a non-empty selection sits inside, or undefined. */
+function homeBlockOfSelection(): HTMLElement | undefined {
+  const active = document.activeElement
+  if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) return undefined
+  const sel = window.getSelection()
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return undefined
+  if ((sel.toString() ?? '').trim().length === 0) return undefined
+  const node = sel.getRangeAt(0).commonAncestorContainer
+  const start = node.nodeType === 1 ? (node as Element) : node.parentElement
+  const el = start?.closest<HTMLElement>('[data-paragraph-index]')
+  return el && content.contains(el) ? el : undefined
+}
+
+function hideSelToolbar(): void {
+  selToolbar.hidden = true
+}
+
+function positionSelToolbar(): void {
+  const el = homeBlockOfSelection()
+  if (!el) return hideSelToolbar()
+  const rect = window.getSelection()!.getRangeAt(0).getBoundingClientRect()
+  if (rect.width === 0 && rect.height === 0) return hideSelToolbar()
+  selToolbar.dataset.blockIndex = el.dataset.paragraphIndex ?? ''
+  // Centred just above the selection; clamp to the viewport top so it never clips off-screen.
+  selToolbar.style.left = `${rect.left + rect.width / 2}px`
+  selToolbar.style.top = `${Math.max(rect.top - 4, 30)}px`
+  selToolbar.hidden = false
+}
+
+document.addEventListener('selectionchange', positionSelToolbar)
+// A pointer press inside the toolbar must not collapse the text selection before the click.
+selToolbar.addEventListener('mousedown', (e) => e.preventDefault())
+selEdit.addEventListener('click', () => {
+  const idx = Number(selToolbar.dataset.blockIndex)
+  hideSelToolbar()
+  if (Number.isFinite(idx)) post({ type: 'editParagraph', paragraphIndex: idx })
+})
+selComment.addEventListener('click', () => {
+  const idx = Number(selToolbar.dataset.blockIndex)
+  hideSelToolbar()
+  if (Number.isFinite(idx)) openCommentModal(idx)
+})
+// A scroll moves the selection out from under a fixed-position toolbar — hide it.
+content.addEventListener('scroll', hideSelToolbar)
+window.addEventListener('scroll', hideSelToolbar, true)
+
 window.addEventListener('message', (event: MessageEvent) => {
   const msg = event.data as { type: string; [k: string]: unknown }
   switch (msg.type) {
@@ -675,6 +723,7 @@ window.addEventListener('message', (event: MessageEvent) => {
       // Comments toggle (req 11.13): a class on #content drives CSS that hides the
       // per-block comment icon; toggling it live reflects a settings change at once.
       content.classList.toggle('comments-off', msg.commentsEnabled === false)
+      selComment.hidden = msg.commentsEnabled === false // no new-comment action when disabled
       const hint = msg.settingsHint as string | undefined
       settingsLink.hidden = !hint
       if (hint) settingsLink.textContent = hint
@@ -945,6 +994,10 @@ function dismissTopLayer(): boolean {
   }
   if (!findBar.hidden) {
     closeFindBar()
+    return true
+  }
+  if (!selToolbar.hidden) {
+    hideSelToolbar()
     return true
   }
   return false

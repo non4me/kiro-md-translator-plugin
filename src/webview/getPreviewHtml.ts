@@ -68,9 +68,10 @@ export function getPreviewHtml(
       align-items: flex-start; justify-content: flex-start; min-width: max-content; }
     .bctl button { display: flex; padding: 0; margin: 0; border: none; background: none;
       color: var(--vscode-foreground); cursor: pointer; opacity: 0; }
-    /* Icons appear (dimmed) only while the block is hovered (req 10.8)... */
-    #content [data-paragraph-index]:hover > .bctl button { opacity: .5; }
-    /* ...except a block WITH comments keeps its comment icon shown (dimmed), drawn filled. */
+    /* Affordance redesign (stage 2): the gutter shows ONLY the existing-comment marker.
+       Edit and new-comment moved to the cursor toolbar (#sel-toolbar) on selection, so the
+       gutter no longer reveals action icons on hover — a block with comments keeps its
+       marker shown (dimmed, drawn filled); a block without comments shows nothing. */
     .bctl-comment.has { opacity: .5; }
     /* Comments disabled in settings (req 11.13): hide the comment control entirely
        (a display:none element takes no hover/click, so comments are unreachable);
@@ -133,6 +134,21 @@ export function getPreviewHtml(
       background: none; color: var(--vscode-foreground); cursor: pointer; opacity: .8; }
     #find-bar button:hover { opacity: 1;
       background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.2)); }
+    /* Cursor toolbar (affordance redesign, stage 2): appears by the selection with the
+       edit + comment actions. position:fixed + translate(-50%,-100%) puts it centred just
+       above the selection; JS sets left/top from the selection's client rect. Above content
+       and find bar (15), below modals (20). */
+    #sel-toolbar { position: fixed; z-index: 16; display: flex; gap: 2px; padding: 3px 4px;
+      transform: translate(-50%, -100%); border-radius: 4px;
+      background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+      border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+      box-shadow: 0 2px 8px rgba(0,0,0,.35); }
+    #sel-toolbar button { display: inline-flex; align-items: center; justify-content: center;
+      width: 24px; height: 24px; padding: 0; border: none; border-radius: 3px;
+      background: none; color: var(--vscode-foreground); cursor: pointer; opacity: .85; }
+    #sel-toolbar button:hover { opacity: 1;
+      background: var(--vscode-toolbar-hoverBackground, rgba(128,128,128,.2)); }
+    #sel-toolbar button svg { width: 16px; height: 16px; display: block; }
     /* CSS Custom Highlight API paints the matches (req 1.8): all occurrences dimmed,
        the current one stronger. Editor find-match theme tokens, with fallbacks. */
     ::highlight(find-matches) {
@@ -158,6 +174,11 @@ export function getPreviewHtml(
     <button id="find-prev" title="Previous match (Shift+Enter)" aria-label="Previous match">&#8593;</button>
     <button id="find-next" title="Next match (Enter)" aria-label="Next match">&#8595;</button>
     <button id="find-close" title="Close (Esc)" aria-label="Close find">&#10005;</button>
+  </div>
+
+  <div id="sel-toolbar" role="toolbar" aria-label="Selection actions" hidden>
+    <button id="sel-edit" title="Edit block" aria-label="Edit block"></button>
+    <button id="sel-comment" title="Comment on selection" aria-label="Comment on selection"></button>
   </div>
 
   <div id="tooltip" role="tooltip"></div>
