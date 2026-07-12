@@ -1,10 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import * as vscode from './mocks/vscode'
-import { SidecarBackend, InlineEofBackend, InlineAfterBackend } from '../src/commentBackends'
+import {
+  SidecarBackend,
+  InlineEofBackend,
+  InlineAfterBackend,
+  DraftBackend,
+  draftUri,
+  moveDraft,
+} from '../src/commentBackends'
 import type { SidecarIO } from '../src/commentSidecar'
 import type { Block, CommentsFile } from '../src/types'
 
 const docUri = vscode.Uri.parse('file:///doc/api.md') as never
+const storageRoot = vscode.Uri.parse('file:///global/storage') as never
 
 function memIO() {
   const store = new Map<string, string>()
@@ -68,5 +76,80 @@ describe('inline backends', () => {
     const withBlock = (await be.persist({ data, source: src, blocks, live })) as { newSource: string }
     const cleared = await be.clear(withBlock.newSource)
     expect(cleared.newSource).not.toContain('rmt:comments')
+  })
+})
+
+describe('DraftBackend', () => {
+  const ctx = (data: CommentsFile) => ({ data, source: '', blocks: [], live: new Map() })
+
+  it('persists then loads the same threads', async () => {
+    const { io } = memIO()
+    const be = new DraftBackend(docUri, storageRoot, io)
+    const res = await be.persist(ctx(file))
+    expect(res.kind).toBe('draft')
+    expect((await be.load('')).threads).toHaveLength(1)
+  })
+
+  it('writes into the extension storage, never next to the document', async () => {
+    const { io, store } = memIO()
+    await new DraftBackend(docUri, storageRoot, io).persist(ctx(file))
+    const key = [...store.keys()][0]
+    expect(key).toContain('/global/storage/')
+    expect(key).not.toContain('/doc/')
+  })
+
+  it('removes the record when the last comment goes', async () => {
+    const { io, store } = memIO()
+    const be = new DraftBackend(docUri, storageRoot, io)
+    await be.persist(ctx(file))
+    await be.persist(ctx({ version: 1, docHash: '', threads: [] }))
+    expect(store.size).toBe(0)
+  })
+
+  it('a record claiming another document reads as empty (a hash collision is a miss, never a mix-up)', async () => {
+    const { io, store } = memIO()
+    const be = new DraftBackend(docUri, storageRoot, io)
+    await io.write(
+      draftUri(docUri, storageRoot),
+      JSON.stringify({ version: 1, docHash: '', docUri: 'file:///other/doc.md', threads: file.threads }),
+    )
+    expect((await be.load('')).threads).toHaveLength(0)
+    expect(store.size).toBe(1) // not ours → left alone, not deleted
+  })
+
+  it('a corrupt record reads as empty and never throws', async () => {
+    const { io } = memIO()
+    const be = new DraftBackend(docUri, storageRoot, io)
+    await io.write(draftUri(docUri, storageRoot), '{ not json')
+    expect((await be.load('')).threads).toHaveLength(0)
+  })
+
+  it('clear removes the record', async () => {
+    const { io, store } = memIO()
+    const be = new DraftBackend(docUri, storageRoot, io)
+    await be.persist(ctx(file))
+    await be.clear('')
+    expect(store.size).toBe(0)
+  })
+})
+
+describe('moveDraft', () => {
+  const renamed = vscode.Uri.parse('file:///doc/renamed.md') as never
+
+  it('re-keys the record to the new document uri', async () => {
+    const { io, store } = memIO()
+    await new DraftBackend(docUri, storageRoot, io).persist({
+      data: file, source: '', blocks: [], live: new Map(),
+    })
+    expect(await moveDraft(docUri, renamed, storageRoot, io)).toBe(true)
+    expect(store.size).toBe(1)
+    expect((await new DraftBackend(renamed, storageRoot, io).load('')).threads).toHaveLength(1)
+    expect((await new DraftBackend(docUri, storageRoot, io).load('')).threads).toHaveLength(0)
+  })
+
+  it('is a no-op when the document has no draft', async () => {
+    const { io, store } = memIO()
+    expect(await moveDraft(docUri, renamed, storageRoot, io)).toBe(false)
+    expect(store.size).toBe(0)
   })
 })

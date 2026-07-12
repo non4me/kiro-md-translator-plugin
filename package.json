@@ -203,18 +203,21 @@
             "order": 1,
             "enum": [
               "sidecar",
-              "inline"
+              "inline",
+              "draft"
             ],
             "enumItemLabels": [
               "Separate file",
-              "Inside the Markdown file"
+              "Inside the Markdown file",
+              "Draft (editor storage)"
             ],
             "enumDescriptions": [
               "Store comments in a separate `<name>.md.comments.json` file next to the document (default). The Markdown file itself is never modified.",
-              "Embed comments inside the Markdown file as invisible HTML comments, so a single file carries its comments."
+              "Embed comments inside the Markdown file as invisible HTML comments, so a single file carries its comments.",
+              "Keep comments in the editor's own storage. Nothing is written next to the document and the Markdown file is never modified — the only mode that works on documents you cannot write to (dependencies, a cloned repo, a read-only or remote file). Drafts stay on this machine and do NOT travel with the file."
             ],
             "default": "sidecar",
-            "markdownDescription": "Where block comments are saved: in a **separate file** next to the document (default), or **inside the Markdown file** itself."
+            "markdownDescription": "Where block comments are saved: in a **separate file** next to the document (default), **inside the Markdown file** itself, or as a **draft** in the editor's own storage (nothing is written to disk beside the document)."
           },
           "kiro-md-translator.commentPlacement": {
             "type": "string",

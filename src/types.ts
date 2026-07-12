@@ -34,7 +34,7 @@ export interface CacheEntry {
 
 export type ProviderType = 'deepl' | 'google' | 'custom' | 'ollama'
 export type TranslationMode = 'on-demand' | 'automatic'
-export type CommentStorage = 'sidecar' | 'inline'
+export type CommentStorage = 'sidecar' | 'inline' | 'draft'
 export type CommentPlacement = 'after-paragraph' | 'end-of-file'
 
 export interface PluginConfig {

@@ -7,7 +7,14 @@ import { TranslationEngine } from './TranslationEngine'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { ExportService } from './ExportService'
 import { CommentsService } from './CommentsService'
-import { type CommentBackend, SidecarBackend, InlineEofBackend, InlineAfterBackend } from './commentBackends'
+import {
+  type CommentBackend,
+  SidecarBackend,
+  InlineEofBackend,
+  InlineAfterBackend,
+  DraftBackend,
+  moveDraft,
+} from './commentBackends'
 import { PreviewController, type PreviewDeps } from './PreviewController'
 import { createProvider } from './providers/ProviderFactory'
 import { getPreviewHtml } from './webview/getPreviewHtml'
@@ -59,8 +66,22 @@ export class ActivationController implements IActivationController, vscode.Custo
     )
     this.secrets = new SecretManager(context.secrets)
     this.ready = this.initApiKey()
+    // Home of the draft comment store (req 11.15). `createDirectory` is recursive and
+    // idempotent, so this is safe to fire on every activation.
+    void vscode.workspace.fs.createDirectory(
+      vscode.Uri.joinPath(context.globalStorageUri, 'comments'),
+    )
 
     context.subscriptions.push(
+      // A document renamed INSIDE the editor keeps its drafts (the record is keyed by the
+      // document URI). A move made outside the editor breaks the link — accepted: drafts
+      // are drafts, and the record is never deleted, just not found.
+      vscode.workspace.onDidRenameFiles(async (e) => {
+        for (const { oldUri, newUri } of e.files) {
+          if (!newUri.path.toLowerCase().endsWith('.md')) continue
+          await moveDraft(oldUri, newUri, context.globalStorageUri)
+        }
+      }),
       vscode.window.registerCustomEditorProvider(VIEW_TYPE, this, {
         // Keep the preview's DOM alive while its tab is hidden (e.g. a double-click
         // opens the source editor over it): the host does not re-render on the
@@ -183,9 +204,12 @@ export class ActivationController implements IActivationController, vscode.Custo
 
   /** Select the comment persistence backend from settings (req 11): sidecar by
    *  default; inline end-of-file or after-paragraph when `commentStorage` is
-   *  `inline`, per `commentPlacement`. */
+   *  `inline`, per `commentPlacement`; the extension's own storage when `draft`
+   *  (req 11.15 — nothing is written beside the document). */
   private makeCommentBackend(docUri: vscode.Uri): CommentBackend {
-    if (this.settings.getCommentStorage() !== 'inline') return new SidecarBackend(docUri)
+    const storage = this.settings.getCommentStorage()
+    if (storage === 'draft') return new DraftBackend(docUri, this.context.globalStorageUri)
+    if (storage !== 'inline') return new SidecarBackend(docUri)
     return this.settings.getCommentPlacement() === 'end-of-file'
       ? new InlineEofBackend()
       : new InlineAfterBackend()
