@@ -3,6 +3,47 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.7.0] — 2026-07-13
+
+Large feature release: fragment & multi-block comments, code syntax highlighting,
+translation of code comments, a draft comment store, and a reworked selection/click model.
+
+### Added
+
+- **Code syntax highlighting.** Fenced code blocks are coloured with a theme you choose in
+  settings (**Appearance → Code Highlight Theme**): `auto` follows the editor's light/dark theme,
+  or pick a named theme (github-dark/light, monokai, nord, atom-one-dark, dracula, solarized-light),
+  or turn it `off`. Switching the theme re-colours instantly.
+- **Comment on a text fragment or a multi-block selection.** Select text — a word, a phrase, or a
+  span across several blocks — and a small toolbar appears next to the selection with **Edit** and
+  **Comment**. A comment highlights exactly the selected text (or the whole selected range across
+  blocks) and re-anchors as the original is edited.
+- **Translate comments inside code blocks.** Prose in code comments is translated, while the code
+  itself is never sent to the translation provider and never altered.
+- **Draft comment storage.** A third way to keep comments — in the extension's own storage, with
+  nothing written beside the file — so comments work on read-only or foreign files. Optional
+  **auto-import** merges comments from the other stores when a file is opened, and a project-wide
+  **"Import comments"** command moves every file's comments into your chosen store.
+- **Inline comment storage.** Optionally embed comments in the `.md` itself as invisible HTML
+  comments (after each paragraph or at end-of-file); they are stripped from exported files.
+
+### Changed
+
+- **Double-click now selects the block** under the cursor (bringing up its Edit/Comment toolbar).
+  **Opening the original source (Edit Mode) is now a triple-click** — previously a double-click.
+- **Edit and new-comment actions moved to a toolbar by the selection**, off the block's gutter; the
+  gutter now shows only the comment marker for blocks that already have comments.
+- **Code blocks and table rows are now full blocks** — each gets a comment marker, hover
+  translation, scroll sync, and inline editing, like paragraphs.
+- **The hover peek renders as HTML** — a code block in the reverse-translation tooltip stays a real
+  code block (whitespace kept, ``` fences gone) instead of collapsing to one line.
+
+### Fixed
+
+- **Multi-block comments no longer disappear** when a selection end lands on a block containing
+  inline code or emphasis — the comment now anchors at block level instead of failing to re-find
+  rendered text in the source.
+
 ## [0.6.5] — 2026-07-10
 
 ### Fixed

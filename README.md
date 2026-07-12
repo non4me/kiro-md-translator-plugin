@@ -3,23 +3,24 @@
 A Kiro / VS Code extension that opens `.md` files in a rendered preview and translates the
 content into any supported language — without leaving the editor.
 
-By default a `.md` file opens as a full rendered preview (no editor). Double-clicking the
-preview enters **Edit Mode** (split view: source editor on the left, translated preview on the
-right). The file on disk always stays in the **Storage language** (default English); the
-**Target language** is an in-memory display transform.
+By default a `.md` file opens as a full rendered preview (no editor). **Double-click** a block to
+select it (bringing up its Edit/Comment toolbar); **triple-click** to enter **Edit Mode** (split
+view: source editor on the left, translated preview on the right). The file on disk always stays in
+the **Storage language** (default English); the **Target language** is an in-memory display transform.
 
 ## Features
 
 - Rendered CommonMark + GFM preview (headings, lists, tables, fenced/inline code, links, images).
+- **Code syntax highlighting** — fenced code is coloured with a theme you pick (auto-follows the editor's theme, a named theme, or off).
 - Translation in two modes: **on-demand** (a Translate button) and **automatic** (on open / after edits settle).
 - Pluggable translation providers: **DeepL**, **Google Translate**, a local **Ollama** LLM (offline, keyless), or a custom `https://` endpoint.
 - **Bilingual view** — a two-column toggle showing source and translation side by side with paragraph-synced scrolling.
 - **Glossary** — do-not-translate terms (product names, identifiers) kept verbatim and never sent to the translation API; add the current selection to it by right-clicking in a Markdown editor → *Exclude Selection from Translation*.
 - **Persistent translation memory** — translations are remembered across IDE sessions, so reopening a file does not re-spend API quota on already-translated text.
-- **Comments** — annotate any block without touching the `.md`; comments live in a sidecar file and re-anchor to their block when the original is edited.
+- **Comments** — annotate a whole block, a selected text fragment, or a span across several blocks, without touching the `.md`. A toolbar by the selection offers **Edit** and **Comment**; comments re-anchor to their text as the original is edited. Keep them in a sidecar file, inline in the `.md`, or as local drafts.
 - Hover any block to see the reverse translation; edit a paragraph (original ↔ translation auto-sync) and save it back.
 - Export the translated document as `{name}.{lang}.md`.
-- Two-tier cache: an in-session LRU (50 entries) over the persistent memory; code, inline code and URLs are never sent to the translation API.
+- Two-tier cache: an in-session LRU (50 entries) over the persistent memory; code, inline code and URLs are never sent to the translation API (only the prose of code comments is, when present).
 - API keys stored only in the IDE SecretStorage / OS keychain, per provider (never in workspace config).
 - English UI; all configuration lives in the standard VS Code settings page.
 
@@ -51,15 +52,23 @@ return. The button is enabled once a Target language is set (a translation is re
 none exists yet).
 
 ### Comments
-Add comments to any block without modifying the `.md` file. Hover a paragraph and click **Comment**
-(next to *Edit*), or click the **💬** indicator that appears next to a block that already has comments —
-hovering the indicator previews the thread, clicking it opens a modal to add, edit, or delete comments.
+Add comments without modifying the `.md` file. **Select text** — a word, a fragment, or a span across
+several blocks — and a small toolbar appears next to the selection with **Edit** and **Comment**; the
+comment highlights exactly what you selected. A marker next to a block shows it already has comments —
+hovering it previews the threads, clicking opens a modal to add, edit, or delete.
 
-Comments are stored in a sidecar next to the file (`docs/api.md` → `docs/api.md.comments.json`)
-— never inside the Markdown; deleting the last comment on a file removes the sidecar. Whether you commit that sidecar to git is your call (the extension does not
-add any `.gitignore` rule). Each comment is anchored to its block's **content**, so editing the original
-— even while the preview is closed — re-anchors the comment to the same block. If a commented block is
-deleted, its comments are shown under **Outdated comments** rather than lost or moved to the wrong block.
+By default comments are stored in a **sidecar** next to the file (`docs/api.md` →
+`docs/api.md.comments.json`) — never inside the Markdown; deleting the last comment removes the sidecar.
+Two other stores can be chosen in settings: **inline** (embedded in the `.md` as invisible HTML
+comments, stripped from exported files) and **draft** (kept in the extension's own storage, with nothing
+written beside the file — for read-only or foreign files). Optional **auto-import** merges comments found
+in the other stores when a file is opened, and the **"Import comments"** command moves a whole project's
+comments into your chosen store.
+
+Each comment is anchored to its **content**, so editing the original — even while the preview is closed —
+re-anchors it. If a commented block is deleted, its comments are shown under **Outdated comments** rather
+than lost or moved to the wrong block. Whether you commit a sidecar to git is your call (the extension
+adds no `.gitignore` rule).
 
 #### License
 MIT — see the `LICENSE` file.
