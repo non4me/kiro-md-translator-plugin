@@ -45,11 +45,14 @@ plus a little surrounding text to tell repeats apart. Everything between the two
 resolved ends is the span, and the highlight fills it: the tail of the first
 block, every block in the middle whole, and the head of the last block.
 
-If the text of either end is later deleted, or the ends resolve out of order, the
-comment **orphans** — it is never silently re-pinned to a different span. This is
-the same trust rule the single-block comments follow ("prefer an orphan over a
-wrong match"): a comment that quietly moves to unrelated text is worse than one
-that visibly loses its home.
+If either end block is later deleted (its content anchor no longer matches), or the
+ends resolve out of order, the comment **orphans** — it is never silently re-pinned to
+a different span. Resolution is at the block level: the two ends are matched by their
+block text, not by re-finding the exact selected characters, so a block that carries
+inline markup (which renders differently from its source) never wrongly orphans the
+comment. This is the same trust rule the single-block comments follow ("prefer an
+orphan over a wrong match"): a comment that quietly moves to unrelated text is worse
+than one that visibly loses its home.
 
 The note counts as one thread on its first block, so the existing per-block marker,
 count, and discussion popover keep working unchanged — the span only adds a

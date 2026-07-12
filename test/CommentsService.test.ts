@@ -492,4 +492,21 @@ describe('multi-block span comments (stage 4)', () => {
     expect(res.orphaned).toHaveLength(1)
     expect(res.orphaned[0].comments[0].body).toBe('across the list')
   })
+
+  it('a span whose endpoint block has inline markup still anchors (rendered fragment ≠ source)', () => {
+    // Regression: the webview end fragment is RENDERED text (`` `code` `` → `code`), which is not a
+    // substring of the source. The span must anchor at block level, not orphan and vanish.
+    const s = svc(memIO().io)
+    const t = ['Alpha one', 'Beta two', 'Use `code` here'] // last block carries inline code in the source
+    const src = t.join('\n\n')
+    s.reanchor(blocksFrom(t), src)
+    s.addComment(0, 'into the code block', { quote: 'one', prefix: 'Alpha ', suffix: '' }, 2, {
+      quote: 'Use code here', // rendered — backticks stripped
+      prefix: '',
+      suffix: '',
+    })
+    const res = s.reanchor(blocksFrom(t), src)
+    expect(res.orphaned).toEqual([]) // NOT orphaned — the comment survives
+    expect(res.forBlocks.find((b) => b.paragraphIndex === 0)?.count).toBe(1) // marker on the first block
+  })
 })

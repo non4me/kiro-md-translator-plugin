@@ -155,12 +155,16 @@ export function makeSpanAnchor(
  *  stay in order (end strictly after start). Otherwise the whole span is orphaned — never a
  *  partial, wrong or inverted span (the same "orphan over a wrong match" rule as single blocks). */
 export function resolveSpan(anchor: CommentAnchor, blocks: Block[]): ResolvedSpan | undefined {
-  if (!anchor.end || !anchor.fragment) return undefined
+  if (!anchor.end) return undefined
+  // Both ends resolve at BLOCK level, by their source quote — NOT by re-finding the selected
+  // sub-text. The stored end fragments are RENDERED text (built by the webview for the highlight)
+  // and need NOT be a substring of the source: inline code/emphasis render differently from the
+  // markdown (`` `claude` `` renders as `claude`), so a source-side `locateFragment` would fail and
+  // wrongly orphan the whole comment. A span therefore survives as long as BOTH its end blocks
+  // survive; `matchThread` still refuses to jump to an unrelated block, and the ends must stay in
+  // order. The rendered fragment quotes are used only by the webview painter, against the live DOM.
   const startIndex = matchThread(anchor, blocks)
   if (startIndex === undefined) return undefined
-  const startBlock = blocks.find((b) => b.paragraphIndex === startIndex)
-  if (!startBlock || !locateFragment(anchor.fragment, startBlock.text)) return undefined
-  // The far end is a block anchor in its own right → resolve it with the same machinery.
   const endAnchor: CommentAnchor = {
     quote: anchor.end.quote,
     prefix: anchor.end.prefix,
@@ -169,10 +173,7 @@ export function resolveSpan(anchor: CommentAnchor, blocks: Block[]): ResolvedSpa
     quoteHash: anchor.end.quoteHash,
   }
   const endIndex = matchThread(endAnchor, blocks)
-  if (endIndex === undefined) return undefined
-  const endBlock = blocks.find((b) => b.paragraphIndex === endIndex)
-  if (!endBlock || !locateFragment(anchor.end.fragment, endBlock.text)) return undefined
-  if (endIndex <= startIndex) return undefined // collapsed or inverted → orphan
+  if (endIndex === undefined || endIndex <= startIndex) return undefined // gone, collapsed or inverted → orphan
   return { startIndex, endIndex }
 }
 

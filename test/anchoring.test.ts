@@ -211,11 +211,17 @@ describe('span anchoring (multi-block, stage 4)', () => {
     expect(resolveSpan(a, edited)).toBeUndefined()
   })
 
-  it('resolveSpan orphans when an end fragment text is gone, even if its block still matches', () => {
-    const a = makeSpanAnchor(blocks, 0, startFrag, 2, endFrag)!
-    const edited = blocksFrom(['First block alpha', 'Middle block beta', 'Final block gamma']) // 'Last' → 'Final'
-    expect(matchThread({ ...a.end! }, edited)).toBe(2) // the last block still fuzzy-matches…
-    expect(resolveSpan(a, edited)).toBeUndefined() // …but its head fragment 'Last' is gone → orphan
+  it('resolveSpan resolves at BLOCK level when an end fragment is rendered text absent from the source (regression)', () => {
+    // The webview builds end fragments from RENDERED text; for a block with inline markup the
+    // rendered text is NOT a substring of the source (`` `claude` `` renders as `claude`). The
+    // block quote, however, is the SOURCE. The span MUST still anchor — a source-side fragment
+    // lookup would fail and wrongly orphan the whole comment (the multi-block-comment bug).
+    const src = blocksFrom(['First block alpha', 'Middle block beta', 'Use `claude` here'])
+    const renderedTail: FragmentAnchor = { quote: 'alpha', prefix: 'First block ', suffix: '' }
+    const renderedHead: FragmentAnchor = { quote: 'Use claude here', prefix: '', suffix: '' } // no backticks
+    const a = makeSpanAnchor(src, 0, renderedTail, 2, renderedHead)!
+    expect(a.end?.quote).toBe('Use `claude` here') // the end BLOCK quote is the source (with backticks)
+    expect(resolveSpan(a, src)).toEqual({ startIndex: 0, endIndex: 2 }) // resolves — old code orphaned here
   })
 
   it('resolveSpan orphans when the ends invert after a reorder', () => {
@@ -246,10 +252,11 @@ describe('span anchoring (multi-block, stage 4)', () => {
             : { quote: texts[e], prefix: '', suffix: '' }
           const anchor = makeSpanAnchor(bl, s, sf, e, ef)!
           const span = resolveSpan(anchor, bl)
-          if (corruptEnd || s === e) {
-            expect(span).toBeUndefined() // end fragment gone, or collapsed to one block → orphan
+          // A corrupt (rendered-only) end fragment must NOT change block-level resolution.
+          if (s === e) {
+            expect(span).toBeUndefined() // collapsed to one block → orphan
           } else {
-            expect(span).toEqual({ startIndex: s, endIndex: e }) // exactly the two ends, in order
+            expect(span).toEqual({ startIndex: s, endIndex: e }) // resolves by block, fragment-independent
           }
         },
       ),
