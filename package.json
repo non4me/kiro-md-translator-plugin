@@ -57,6 +57,10 @@
         "title": "Markdown Translator: Exclude Selection from Translation"
       },
       {
+        "command": "kiro-md-translator.importComments",
+        "title": "Markdown Translator: Import Comments into the Current Storage"
+      },
+      {
         "command": "kiro-md-translator.toggleTranslate",
         "title": "Markdown Translator: Toggle Translation",
         "icon": {

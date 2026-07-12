@@ -15,6 +15,7 @@ import {
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { TranslationEngine } from './TranslationEngine'
 import { stripInlineComments } from './inlineComments'
+import { blocksFromLineMap } from './blocks'
 import { t } from './l10n'
 
 const RENDER_DEBOUNCE_MS = 300
@@ -293,12 +294,7 @@ export class PreviewController implements IPreviewController {
   /** Build the current document's blocks (source text) for anchoring. Comments
    *  always anchor to the STORAGE/source text, independent of the display mode. */
   private currentBlocks(): Block[] {
-    return this.lineMap.map((m) => ({
-      paragraphIndex: m.paragraphIndex,
-      startLine: m.startLine,
-      endLine: m.endLine,
-      text: this.paragraphText(m.paragraphIndex) ?? '',
-    }))
+    return blocksFromLineMap(this.lineMap, this.sourceText)
   }
 
   /** Re-anchor every thread and push the indicator counts + orphaned list. */

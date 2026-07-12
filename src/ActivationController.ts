@@ -15,6 +15,9 @@ import {
   DraftBackend,
   moveDraft,
 } from './commentBackends'
+import { CommentImporter, type ImportDeps } from './CommentImporter'
+import { blocksFromLineMap } from './blocks'
+import { t } from './l10n'
 import { PreviewController, type PreviewDeps } from './PreviewController'
 import { createProvider } from './providers/ProviderFactory'
 import { getPreviewHtml } from './webview/getPreviewHtml'
@@ -123,6 +126,11 @@ export class ActivationController implements IActivationController, vscode.Custo
       vscode.commands.registerCommand('kiro-md-translator.saveTranslation', () =>
         this.active?.onWebviewMessage({ type: 'saveTranslation' }),
       ),
+      // Move every project document's comments into the selected storage (req 11.19).
+      // Reachable from the palette and from the action link in the Comments settings.
+      vscode.commands.registerCommand('kiro-md-translator.importComments', () =>
+        this.importAllComments(),
+      ),
       // Native editor-title toolbar (req 3.21): forward the icon click to the active
       // preview, which runs the same toggle as its own toolbar button.
       vscode.commands.registerCommand('kiro-md-translator.toggleTranslate', () =>
@@ -225,6 +233,130 @@ export class ActivationController implements IActivationController, vscode.Custo
       new InlineAfterBackend(),
       new DraftBackend(docUri, this.context.globalStorageUri),
     ].filter((b) => b.medium !== current)
+  }
+
+  /** Host bindings for the project-wide import. Document writes go through the editor
+   *  (open → edit → save), never a raw filesystem write — the same disciplined path as
+   *  in-place paragraph save (req 7.14). */
+  private importDeps(): ImportDeps {
+    const renderer = new MarkdownRenderer(() => '')
+    const anyDir = vscode.Uri.parse('file:///')
+    return {
+      listDocuments: () =>
+        Promise.resolve(vscode.workspace.findFiles('**/*.md', '**/node_modules/**')),
+      // Only an ALREADY-OPEN document can be dirty, so ask the open set first and read the
+      // rest as bytes. Opening a TextDocument model for every .md in the project — which the
+      // plan pass would do — is a needless memory hit on a large repo.
+      readDocument: async (uri) => {
+        const open = vscode.workspace.textDocuments.find(
+          (d) => d.uri.toString() === uri.toString(),
+        )
+        if (open) return { text: open.getText(), dirty: open.isDirty }
+        try {
+          return { text: new TextDecoder().decode(await vscode.workspace.fs.readFile(uri)), dirty: false }
+        } catch {
+          return undefined
+        }
+      },
+      writeDocument: async (uri, text) => {
+        try {
+          const doc = await vscode.workspace.openTextDocument(uri)
+          const edit = new vscode.WorkspaceEdit()
+          edit.replace(uri, new vscode.Range(0, 0, doc.lineCount, 0), text)
+          if (!(await vscode.workspace.applyEdit(edit))) return false
+          return await doc.save()
+        } catch {
+          return false
+        }
+      },
+      backendsFor: (uri) => ({
+        target: this.makeCommentBackend(uri),
+        sources: this.otherCommentBackends(uri),
+      }),
+      // Only the anchoring blocks are wanted; the rendered HTML (and therefore the image
+      // resolver) is thrown away, hence the stub resolver.
+      blocksOf: (source) =>
+        blocksFromLineMap(renderer.renderMdast(renderer.parse(source), anyDir).lineMap, source),
+    }
+  }
+
+  /** Move every project document's comments into the selected storage (req 11.19). */
+  private async importAllComments(): Promise<void> {
+    const root = vscode.workspace.workspaceFolders?.[0]
+    if (!root) {
+      // No folder ⇒ nothing to walk and nowhere to put a failure report. Say so instead
+      // of silently doing nothing.
+      void vscode.window.showInformationMessage(
+        t('Open a folder first — there is no project to import comments from.'),
+      )
+      return
+    }
+
+    const importer = new CommentImporter(this.importDeps())
+    const plan = await importer.plan()
+    if (plan.length === 0) {
+      void vscode.window.showInformationMessage(
+        t('Nothing to import: every comment is already in the selected storage.'),
+      )
+      return
+    }
+
+    const comments = plan.reduce((n, i) => n + i.commentCount, 0)
+    const confirm = t('Import')
+    const go = await vscode.window.showInformationMessage(
+      t(
+        '{0} comment(s) in {1} file(s) are stored elsewhere. Move them into the selected storage?',
+        String(comments),
+        String(plan.length),
+      ),
+      { modal: true },
+      confirm,
+    )
+    if (go !== confirm) return
+
+    const outcome = await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: t('Importing comments…'),
+        cancellable: true,
+      },
+      (progress, token) =>
+        importer.run(
+          plan,
+          (item, done) =>
+            progress.report({
+              increment: 100 / plan.length,
+              message: `${done}/${plan.length} — ${item.uri.path.split('/').pop() ?? ''}`,
+            }),
+          () => token.isCancellationRequested,
+        ),
+    )
+
+    const summary = t(
+      'Imported {0} comment(s) in {1} file(s). Failed: {2}.',
+      String(outcome.movedComments),
+      String(outcome.movedFiles),
+      String(outcome.failures.length),
+    )
+    if (outcome.failures.length === 0) {
+      void vscode.window.showInformationMessage(
+        outcome.cancelled ? `${summary} ${t('Cancelled.')}` : summary,
+      )
+      return
+    }
+
+    // A report file appears ONLY on failure — a feature whose point is "no litter in the
+    // repo" must not drop a file there after every successful run.
+    const report = vscode.Uri.joinPath(root.uri, 'rmt-comment-import-errors.log')
+    await vscode.workspace.fs.writeFile(
+      report,
+      new TextEncoder().encode(CommentImporter.formatReport(outcome)),
+    )
+    const show = t('Show report')
+    const picked = await vscode.window.showWarningMessage(summary, show)
+    if (picked === show) {
+      void vscode.window.showTextDocument(await vscode.workspace.openTextDocument(report))
+    }
   }
 
   /** Command: prompt for a provider's API key (masked) and store it in the keychain. */
