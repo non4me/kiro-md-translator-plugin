@@ -264,7 +264,11 @@ export class ActivationController implements IActivationController, vscode.Custo
           const edit = new vscode.WorkspaceEdit()
           edit.replace(uri, new vscode.Range(0, 0, doc.lineCount, 0), text)
           if (!(await vscode.workspace.applyEdit(edit))) return false
-          return await doc.save()
+          // `save()` resolves false when the document is not dirty — which is exactly what
+          // happens when files.autoSave already flushed our edit. That is a success, not a
+          // failure, so ask the document whether it is on disk rather than trusting the
+          // return value; otherwise the import reports a phantom failure.
+          return (await doc.save()) || !doc.isDirty
         } catch {
           return false
         }
@@ -471,10 +475,14 @@ export class ActivationController implements IActivationController, vscode.Custo
       undefined, // default flushMs
       () => document.getText(),
       applyEdit,
-      // `applyEdit` only dirties the buffer. migrateFrom's safety invariant needs a real
-      // save before it may clear the source store — otherwise a close-without-save would
-      // lose comments that exist in neither place.
-      () => Promise.resolve(document.save()),
+      // `applyEdit` only dirties the buffer. migrateFrom's safety invariant needs the
+      // content ON DISK before it may clear the source store — otherwise a
+      // close-without-save would lose comments that exist in neither place.
+      // NB: `save()` resolves FALSE when the document was not dirty, not just when the
+      // save failed. "Already on disk" is a success for us (a second migrate pass, or
+      // files.autoSave having beaten us to it), so the predicate is `!isDirty`, never
+      // the return value alone.
+      async () => (await document.save()) || !document.isDirty,
     )
     // Comments left in a store the user has since switched away from would otherwise look
     // lost. Read them all, merge, and move them into the selected store (req 11.17).

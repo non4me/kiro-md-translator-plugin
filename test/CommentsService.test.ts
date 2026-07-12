@@ -310,6 +310,57 @@ describe('auto-import', () => {
     expect(source).toBe(original)
   })
 
+  it('imports from BOTH other stores into an inline target and clears BOTH', async () => {
+    // The second migrate pass produces no further text change, so a `saveSource` that
+    // reported "did the buffer change?" instead of "is it on disk?" would skip the second
+    // clear and strand that store forever. The injected contract is durability.
+    const { io, store } = memIO()
+    let source = `Alpha.\n\nBeta.`
+    const sidecarData: CommentsFile = {
+      version: 1,
+      docHash: '',
+      threads: [
+        {
+          anchor: { quote: 'Alpha.', prefix: '', suffix: '', hintLine: 0, quoteHash: '' },
+          orphaned: false,
+          comments: [{ id: 's1', body: 'from sidecar', createdAt: 't', updatedAt: 't' }],
+        },
+      ],
+    }
+    const draftData: CommentsFile = {
+      version: 1,
+      docHash: '',
+      threads: [
+        {
+          anchor: { quote: 'Beta.', prefix: '', suffix: '', hintLine: 2, quoteHash: '' },
+          orphaned: false,
+          comments: [{ id: 'd1', body: 'from draft', createdAt: 't', updatedAt: 't' }],
+        },
+      ],
+    }
+    await new SidecarBackend(docUri, io).persist({ data: sidecarData, source, blocks: [], live: new Map() })
+    await new DraftBackend(docUri, storageRoot, io).persist({ data: draftData, source, blocks: [], live: new Map() })
+    expect(store.size).toBe(2)
+
+    const svc = new CommentsService(
+      docUri, new InlineAfterBackend(), (() => { let n = 0; return () => `c${n++}` })(),
+      () => 't', 1_000_000,
+      () => source,
+      async (t) => { source = t },
+      async () => true, // durable
+    )
+    svc.setImportSources([new SidecarBackend(docUri, io), new DraftBackend(docUri, storageRoot, io)])
+    await svc.load()
+    expect(svc.importedCount).toBe(2)
+
+    svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
+    await svc.completeImport()
+
+    expect(store.size).toBe(0) // BOTH stores cleared, neither stranded
+    expect(source).toContain('Alpha.\n\n<!-- rmt:comments')
+    expect(source).toContain('Beta.\n\n<!-- rmt:comments')
+  })
+
   it('moves nothing before the blocks exist — otherwise every carrier lands at EOF', async () => {
     const { io, store } = memIO()
     let source = `Alpha.\n\nBeta.`
