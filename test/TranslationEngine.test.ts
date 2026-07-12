@@ -40,7 +40,7 @@ function countType(tree: unknown, type: string): number {
 
 describe('TranslationEngine', () => {
   // Feature: kiro-md-translator-plugin, Property 2: Code/URL segments are excluded from translation input
-  it('Property 2: never sends fenced code, inline code, or URLs to the provider', async () => {
+  it('Property 2: sends no code, inline code or URL — only the prose of code comments', async () => {
     await fc.assert(
       fc.asyncProperty(
         fc.string({ minLength: 1 }).filter((s) => !/[`[\]()\n#|>*_]/.test(s)),
@@ -50,17 +50,74 @@ describe('TranslationEngine', () => {
             seen.push(...segs)
             return segs.map((s) => `T(${s})`)
           })
-          const md = `${prose}\n\n\`\`\`\nFENCED_BODY\n\`\`\`\n\nInline \`INLINE_CODE\` and [link](https://example.com/url).`
+          const md =
+            `${prose}\n\n\`\`\`\nFENCED_BODY\n\`\`\`\n\n` +
+            `\`\`\`js\nconst CODE_TOKEN = "https://x/y" // the prose\n\`\`\`\n\n` +
+            'Inline `INLINE_CODE` and [link](https://example.com/url).'
           await engine.translateToMarkdown(md, 'en', 'de', new AbortController().signal)
           for (const seg of seen) {
+            // A fence with no info string is left alone entirely.
             expect(seg).not.toContain('FENCED_BODY')
             expect(seg).not.toContain('INLINE_CODE')
             expect(seg).not.toContain('example.com/url')
+            // A fence WITH a language gives up its comment prose and nothing else (3.22).
+            expect(seg).not.toContain('CODE_TOKEN')
+            expect(seg).not.toContain('https://x/y')
           }
+          expect(seen).toContain('the prose')
         },
       ),
       { numRuns: 50 },
     )
+  })
+
+  it('translates comments inside a fenced code block, leaving the code byte-identical', async () => {
+    const { engine } = makeEngine(async (segs) => segs.map((s) => `T(${s})`))
+    const md = '```js\nconst u = "https://x/y" // the endpoint\n```\n'
+    const out = await engine.translateToMarkdown(md, 'en', 'de', new AbortController().signal)
+    expect(out).toContain('const u = "https://x/y" // T(the endpoint)')
+  })
+
+  it('leaves a fenced block with an unknown language byte-identical (3.22)', async () => {
+    const seen: string[] = []
+    const { engine } = makeEngine(async (segs) => {
+      seen.push(...segs)
+      return segs.map((s) => `T(${s})`)
+    })
+    const md = '```brainfuck\n+++ // not a comment here\n```\n'
+    const out = await engine.translateToMarkdown(md, 'en', 'de', new AbortController().signal)
+    expect(seen).toEqual([])
+    expect(out).toContain('+++ // not a comment here')
+  })
+
+  it('translateParagraph on a code block sends only the comment prose (3.7)', async () => {
+    const seen: string[] = []
+    const { engine } = makeEngine(async (segs) => {
+      seen.push(...segs)
+      return segs.map((s) => `T(${s})`)
+    })
+    const raw = '```python\nx = "a # b"  # the separator\n```'
+    const out = await engine.translateParagraph(raw, 'en', 'de', new AbortController().signal)
+    expect(seen).toEqual(['the separator'])
+    expect(out).toBe('```python\nx = "a # b"  # T(the separator)\n```')
+  })
+
+  it('translateParagraph never sends a code block that has no comments', async () => {
+    const seen: string[] = []
+    const { engine } = makeEngine(async (segs) => {
+      seen.push(...segs)
+      return segs.map((s) => `T(${s})`)
+    })
+    const raw = '```js\nconst secret = "hunter2"\n```'
+    const out = await engine.translateParagraph(raw, 'en', 'de', new AbortController().signal)
+    expect(seen).toEqual([])
+    expect(out).toBe(raw)
+  })
+
+  it('translateParagraph still translates ordinary prose', async () => {
+    const { engine } = makeEngine(async (segs) => segs.map((s) => `T(${s})`))
+    const out = await engine.translateParagraph('Hello world.', 'en', 'de', new AbortController().signal)
+    expect(out).toBe('T(Hello world.)')
   })
 
   // Feature: kiro-md-translator-plugin, Property 3: Translation cache is a round-trip store

@@ -14,6 +14,7 @@ import {
 } from './types'
 import { MarkdownRenderer } from './MarkdownRenderer'
 import { Glossary } from './Glossary'
+import { commentSpans, fencedBody, spliceComments } from './codeComments'
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
 type AnyNode = any
@@ -24,13 +25,25 @@ function assertNotAborted(signal: AbortSignal): void {
   }
 }
 
+/** One tree node's contribution to the flat segment list, plus the way back.
+ *  A `text` node yields one segment; a `code` node yields one per comment. */
+interface Unit {
+  segments: string[]
+  apply(translated: string[]): void
+}
+
 /**
- * Orchestrates the translation pipeline: extract translatable text nodes
- * (skipping code/inlineCode/url — they are distinct node types / properties, so
- * collecting only `text` nodes excludes them — Property 2), cache lookup, a
- * single batched provider call for misses, structure-preserving re-insertion,
- * then mdast → HTML for display (no markdown round-trip). `remark-stringify` is
- * used ONLY for the export path (a new file), never to overwrite the source.
+ * Orchestrates the translation pipeline: extract translatable segments, cache
+ * lookup, a single batched provider call for misses, structure-preserving
+ * re-insertion, then mdast → HTML for display (no markdown round-trip).
+ * `remark-stringify` is used ONLY for the export path (a new file), never to
+ * overwrite the source.
+ *
+ * Segments come from `text` nodes and from the PROSE OF COMMENTS inside `code`
+ * nodes (req 3.22). `inlineCode` and link `url`s are distinct node types /
+ * properties and are never collected, so they stay excluded (Property 2). Code
+ * outside its comments is never sent and never altered (Property 24) — see
+ * `codeComments.ts` for why that holds by construction.
  */
 export class TranslationEngine implements ITranslationEngine {
   constructor(
@@ -63,12 +76,35 @@ export class TranslationEngine implements ITranslationEngine {
     return unified().use(remarkGfm).use(remarkStringify).stringify(mdast)
   }
 
+  /**
+   * One block's text (hover tooltip, edit modal). A fenced code block is scanned
+   * for comments like any other code block — WITHOUT this branch the modal would
+   * hand the provider the entire program, which is exactly what req 3.7 forbids.
+   * The fence delimiters are copied verbatim and are added to the forbidden set,
+   * so a translation can never close the fence early.
+   */
   async translateParagraph(
     text: string,
     sourceLang: LanguageCode,
     targetLang: LanguageCode,
     signal: AbortSignal,
   ): Promise<string> {
+    const fence = fencedBody(text)
+    if (fence) {
+      const body = text.slice(fence.start, fence.end)
+      const spans = commentSpans(body, fence.lang).map((s) => ({
+        ...s,
+        forbidden: [...s.forbidden, fence.fence],
+      }))
+      if (spans.length === 0) return text
+      const translated = await this.translateSegments(
+        spans.map((s) => s.text),
+        sourceLang,
+        targetLang,
+        signal,
+      )
+      return text.slice(0, fence.start) + spliceComments(body, spans, translated) + text.slice(fence.end)
+    }
     const [result] = await this.translateSegments([text], sourceLang, targetLang, signal)
     return result
   }
@@ -87,7 +123,9 @@ export class TranslationEngine implements ITranslationEngine {
     return [...before, ...newStorageText.split('\n'), ...after].join('\n')
   }
 
-  /** Parse, translate text nodes in place, return the mutated mdast. */
+  /** Parse, translate in place, return the mutated mdast. Only `value` is touched —
+   *  `position` keeps pointing at the ORIGINAL source range, which is what lets the
+   *  lineMap stay correct however much longer a translation is. */
   private async translateMdast(
     markdown: string,
     sourceLang: LanguageCode,
@@ -97,18 +135,38 @@ export class TranslationEngine implements ITranslationEngine {
     assertNotAborted(signal)
     const mdast = this.renderer.parse(markdown)
 
-    const textNodes: AnyNode[] = []
-    visit(mdast, 'text', (node: AnyNode) => {
-      if (typeof node.value === 'string' && node.value.trim().length > 0) {
-        textNodes.push(node)
+    const units: Unit[] = []
+    visit(mdast, (node: AnyNode) => {
+      if (typeof node.value !== 'string') return
+      if (node.type === 'text' && node.value.trim().length > 0) {
+        units.push({
+          segments: [node.value],
+          apply: ([translated]) => {
+            node.value = translated
+          },
+        })
+        return
+      }
+      if (node.type === 'code') {
+        const body = node.value as string
+        const spans = commentSpans(body, node.lang)
+        if (spans.length === 0) return
+        units.push({
+          segments: spans.map((s) => s.text),
+          apply: (translated) => {
+            node.value = spliceComments(body, spans, translated)
+          },
+        })
       }
     })
 
-    const segments = textNodes.map((n) => n.value as string)
-    const translations = await this.translateSegments(segments, sourceLang, targetLang, signal)
-    textNodes.forEach((node, i) => {
-      node.value = translations[i]
-    })
+    const flat = units.flatMap((u) => u.segments)
+    const translations = await this.translateSegments(flat, sourceLang, targetLang, signal)
+    let at = 0
+    for (const unit of units) {
+      unit.apply(translations.slice(at, at + unit.segments.length))
+      at += unit.segments.length
+    }
     return mdast
   }
 
