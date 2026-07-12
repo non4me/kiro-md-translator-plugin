@@ -457,10 +457,14 @@ modalTarget.addEventListener(
   'input',
   debounce(() => post({ type: 'modalSyncRequest', field: 'target', text: modalTarget.value }), MODAL_MS),
 )
-modalCancel.addEventListener('click', () => {
+/** The ONE way the edit modal closes without saving — the ✕/Cancel button and Esc must
+ *  stay identical, including telling the host the edit was abandoned. */
+function closeEditModal(): void {
   modal.hidden = true
   post({ type: 'cancelParagraphEdit' })
-})
+}
+
+modalCancel.addEventListener('click', closeEditModal)
 modalSave.addEventListener('click', () => {
   modal.hidden = true
   post({
@@ -544,10 +548,15 @@ commentAdd.addEventListener('click', () => {
   commentInput.value = ''
   refreshOpenThread()
 })
-commentClose.addEventListener('click', () => {
+/** The ONE way the comment modal closes. Resetting `openThreadIndex` is not cosmetic:
+ *  `refreshOpenThread` keys off it, and a stale index keeps re-requesting the thread of a
+ *  modal that is no longer on screen. */
+function closeCommentModal(): void {
   commentModal.hidden = true
   openThreadIndex = -1
-})
+}
+
+commentClose.addEventListener('click', closeCommentModal)
 
 // --- exclude selection from translation (req 3.19) ---------------------------
 
@@ -900,15 +909,43 @@ document.addEventListener('keydown', (e) => {
     openFindBar()
   }
 })
-// Esc closes the bar, handled in the CAPTURE phase on the document so it wins over the
-// webview's default focus-move (which otherwise just shifts focus to the ↓ button) and
-// works regardless of which find control currently holds focus.
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !findBar.hidden) {
-    e.preventDefault()
-    e.stopPropagation()
-    closeFindBar()
+/**
+ * Dismiss the topmost open layer; false when there is nothing to dismiss (so Esc keeps its
+ * default meaning elsewhere). The ORDER is the whole point: the dialogs sit on top of the
+ * find bar, so Esc with both open must close the dialog, not the bar underneath it. This
+ * is also why there is a single handler rather than one per surface — two listeners would
+ * both fire and close two layers at once.
+ */
+function dismissTopLayer(): boolean {
+  if (!commentModal.hidden) {
+    // An in-progress comment edit is a layer of its own: Esc cancels the edit and returns
+    // to the list. Closing the whole modal here would silently throw away what was typed.
+    if (commentList.querySelector('textarea')) {
+      refreshOpenThread()
+      return true
+    }
+    closeCommentModal()
+    return true
   }
+  if (!modal.hidden) {
+    closeEditModal()
+    return true
+  }
+  if (!findBar.hidden) {
+    closeFindBar()
+    return true
+  }
+  return false
+}
+
+// Handled in the CAPTURE phase on the document so it wins over the webview's default
+// focus-move (which otherwise just shifts focus to the next control instead of closing)
+// and works regardless of which control — textarea, button, input — currently has focus.
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape') return
+  if (!dismissTopLayer()) return
+  e.preventDefault()
+  e.stopPropagation()
 }, true)
 
 post({ type: 'ready' })
