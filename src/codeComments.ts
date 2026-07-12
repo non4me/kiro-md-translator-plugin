@@ -31,6 +31,13 @@ interface LangSpec {
   /** The language has `/…/` regex literals, which can end in `//` and be misread
    *  as a comment. See `startsRegex`. */
   regexLiterals?: boolean
+  /** The language has `'x'` char literals that must be told apart from `'a`
+   *  lifetimes (Rust). A char literal of a quote (`'"'`) or slash (`'/'`) would
+   *  otherwise open a phantom string or comment. See the scanner. */
+  charLiterals?: boolean
+  /** The language has `<<EOF` heredocs (shell). Their body is data, not code, so
+   *  a `#` line or an unbalanced quote inside must not be scanned. See `skipHeredoc`. */
+  heredoc?: boolean
   /** Lua long brackets, at ANY level: `--[==[ … ]==]` comments and `[==[ … ]==]`
    *  strings. A fixed `--[[`/`]]` pair silently corrupts every other level — the
    *  scanner would read `--[==[` as a plain `--` line comment, splice a translation
@@ -58,12 +65,14 @@ const C_LIKE: LangSpec = { line: ['//'], block: [['/*', '*/']], strings: [DQ, SQ
  *  of the statement, destroying it. Java, C, Go, Rust have no regex literal, so
  *  they keep the simpler spec. */
 const JS_LIKE: LangSpec = { ...C_LIKE, regexLiterals: true }
-/** Rust drops the char-literal quote: a lifetime (`&'a str`) would open a string
- *  that never closes and swallow every comment after it. `//` cannot occur inside
- *  a Rust char literal anyway, so nothing is lost. */
-const RUST: LangSpec = { line: ['//'], block: [['/*', '*/']], strings: [DQ] }
+/** Rust drops the `'` string delimiter: a lifetime (`&'a str`) would open a string
+ *  that never closes. Char literals are recognised structurally instead (see the
+ *  scanner), so `'"'` and `'/'` cannot open a phantom string or comment. */
+const RUST: LangSpec = { line: ['//'], block: [['/*', '*/']], strings: [DQ], charLiterals: true }
 /** `#` in C is a preprocessor directive, which is why the C family carries none. */
 const HASH: LangSpec = { line: ['#'], block: [], strings: [DQ, SQ], lineNeedsBoundary: true }
+/** Shell adds heredocs to the hash family. */
+const SHELL: LangSpec = { ...HASH, heredoc: true }
 /** Triple quotes come first (longest opener wins), so a `#` inside a docstring is
  *  code, not a comment. Docstrings themselves are strings and are never translated. */
 const PYTHON: LangSpec = {
@@ -110,9 +119,10 @@ const SPECS = new Map<string, LangSpec>([
   ),
   ...alias(RUST, 'rust', 'rs'),
   ...alias(PYTHON, 'python', 'py', 'python3'),
+  ...alias(SHELL, 'shell', 'sh', 'bash', 'zsh', 'fish', 'shell-session', 'console'),
   ...alias(
     HASH,
-    'ruby', 'rb', 'shell', 'sh', 'bash', 'zsh', 'fish', 'shell-session',
+    'ruby', 'rb',
     'yaml', 'yml', 'toml', 'perl', 'pl', 'r', 'make', 'makefile',
     'dockerfile', 'docker', 'elixir', 'ex', 'exs', 'julia', 'jl',
     'nginx', 'conf', 'properties', 'env', 'dotenv', 'gitignore', 'awk', 'tcl',
@@ -137,9 +147,12 @@ export function specFor(lang?: string | null): LangSpec | undefined {
 }
 
 /** Decoration — JSDoc `*`, a doc comment's extra `/`, banner runs — is trimmed from the
- *  span BOUNDARIES, not from the text, so the splice copies it back verbatim. */
+ *  span BOUNDARIES, not from the text, so the splice copies it back verbatim. A trailing
+ *  `\` is decoration too, and load-bearing: in C a `//` line ending in `\` continues the
+ *  comment onto the next line, so keeping the `\` outside the span stops the translator
+ *  from dropping it and reviving the next line as code. */
 const DECOR_LEFT = /^[\s*/#;=~+!<>|-]+/
-const DECOR_RIGHT = /[\s*/#;=~+|-]+$/
+const DECOR_RIGHT = /[\s*/#;=~+|\\-]+$/
 const HAS_LETTER = /\p{L}/u
 
 /** One prose span per LINE of a comment. Anything with no letter at all is a
@@ -223,6 +236,46 @@ function longBracket(code: string, i: number): number {
   return code[j] === '[' ? j - i - 1 : -1
 }
 
+/** A `'` at `i` that is a CHAR literal (`'x'`, `'\''`, `'\n'`) — returns the index
+ *  just past it. Returns -1 for a lifetime (`'a`), where the `'` is ordinary code.
+ *  A char literal of a quote or slash must be consumed whole so its contents cannot
+ *  open a phantom string or comment. Multi-char escapes (`'\u{41}'`) that do not
+ *  close where expected fall back to -1 — a false negative, never a corruption,
+ *  since those escapes contain no comment/string opener. */
+function charLiteral(code: string, i: number): number {
+  if (code[i] !== "'") return -1
+  // `'x'` closes at i+2; `'\x'` (escape) closes at i+3.
+  const close = code[i + 1] === '\\' ? i + 3 : i + 2
+  return code[close] === "'" ? close + 1 : -1
+}
+
+/** A `<<EOF` heredoc opening at `i` (shell) — returns the index just past its whole
+ *  body (delimiter line included), or -1 if this is not a heredoc. The body is data:
+ *  scanning it as code would translate `#` lines and let an unbalanced quote corrupt
+ *  real code after the heredoc. `<<<` (here-string) is not a heredoc. */
+function skipHeredoc(code: string, i: number): number {
+  if (!code.startsWith('<<', i) || code[i + 2] === '<') return -1
+  let j = i + 2
+  if (code[j] === '-' || code[j] === '~') j += 1
+  while (code[j] === ' ' || code[j] === '\t') j += 1
+  const quote = code[j] === '"' || code[j] === "'" ? code[j] : ''
+  if (quote) j += 1
+  const from = j
+  while (j < code.length && /[A-Za-z0-9_]/.test(code[j])) j += 1
+  const delim = code.slice(from, j)
+  if (!delim) return -1
+  if (quote && code[j] === quote) j += 1
+  // Body starts on the next line; the terminator is a line equal to the delimiter
+  // (indented terminators are allowed — `<<-` strips leading tabs, and being lax
+  // here only ever ends the skip sooner, which cannot corrupt).
+  const terminator = new RegExp(`\\n[ \\t]*${delim}[ \\t]*(?=\\n|$)`)
+  const rest = code.slice(j)
+  const at = rest.search(terminator)
+  if (at < 0) return code.length
+  const nl = code.indexOf('\n', j + at + 1)
+  return nl < 0 ? code.length : nl
+}
+
 /**
  * Comment-prose spans in `code`, in ascending order and never overlapping.
  * An unknown or absent language yields none — the block is left alone.
@@ -280,6 +333,26 @@ export function commentSpans(code: string, lang?: string | null): CommentSpan[] 
     if (spec.regexLiterals && code[i] === '/' && startsRegex(code, prev)) {
       const end = skipRegex(code, i)
       if (end > i + 1) {
+        prev = end - 1
+        i = end
+        continue
+      }
+    }
+
+    // A Rust char literal is consumed whole (a lifetime `'a` falls through as code).
+    if (spec.charLiterals && code[i] === "'") {
+      const end = charLiteral(code, i)
+      if (end > 0) {
+        prev = end - 1
+        i = end
+        continue
+      }
+    }
+
+    // A shell heredoc body is skipped whole — it is data, not code.
+    if (spec.heredoc && code[i] === '<') {
+      const end = skipHeredoc(code, i)
+      if (end > 0) {
         prev = end - 1
         i = end
         continue

@@ -75,10 +75,43 @@ describe('commentSpans', () => {
 
   it('survives a Rust lifetime (no char-literal delimiter)', () => {
     expect(texts("fn f<'a>(s: &'a str) {} // borrow it", 'rust')).toEqual(['borrow it'])
+    expect(texts("let x: &'static str = \"y\"; // the label", 'rust')).toEqual(['the label'])
+  })
+
+  it('does NOT let a Rust char literal of a quote open a phantom string', () => {
+    // `'"'` is a char literal; its `"` must not be read as a string opener, or the
+    // following real string literal gets scanned as code and its `//` becomes a comment.
+    const code = `let q = '"';\nlet url = "https://example.com/api";\nprocess() // done`
+    expect(texts(code, 'rust')).toEqual(['done'])
+    // A char literal of an escaped quote must also be handled.
+    expect(texts(`let c = '\\''; run() // ok`, 'rust')).toEqual(['ok'])
+    // A char literal of a slash must not start a comment.
+    expect(texts(`let s = '/'; let t = "a//b"; // note`, 'rust')).toEqual(['note'])
   })
 
   it('does not treat a shebang as a comment', () => {
     expect(texts('#!/usr/bin/env bash\necho hi # say hi', 'bash')).toEqual(['say hi'])
+  })
+
+  it('keeps a trailing backslash outside the span (C line-continuation)', () => {
+    // In C a `//` line that ends in `\` continues onto the next line. If the `\`
+    // were inside the span, the translator would drop it and revive the next line.
+    const code = '// disable \\\nlaunch_missiles();'
+    expect(texts(code, 'c')).toEqual(['disable'])
+    const spans = commentSpans(code, 'c')
+    // The backslash and the newline survive verbatim, so the continuation holds.
+    expect(spliceComments(code, spans, ['отключить'])).toBe('// отключить \\\nlaunch_missiles();')
+  })
+
+  it('does NOT scan shell heredoc content as code', () => {
+    // A `#!` inside a heredoc is not at offset 0, so the shebang guard misses it;
+    // and an unbalanced quote inside a heredoc would corrupt code AFTER the heredoc.
+    expect(texts("cat <<'EOF'\n#!/bin/bash\necho hi\nEOF", 'bash')).toEqual([])
+    expect(texts('cat <<EOF\necho "unbalanced\nEOF\nmore() # the note', 'bash')).toEqual(['the note'])
+    // <<- allows an indented terminator.
+    expect(texts('cat <<-EOF\n\tbody # x\n\tEOF\nrun() # after', 'bash')).toEqual(['after'])
+    // A here-string (`<<<`) is not a heredoc and must not swallow the line.
+    expect(texts('grep x <<< "$y" # search', 'bash')).toEqual(['search'])
   })
 
   it('leaves decoration outside the span so the splice preserves it', () => {
