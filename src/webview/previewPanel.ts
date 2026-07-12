@@ -215,15 +215,27 @@ function drawBlockControls(): void {
 
     const ctl = document.createElement('span')
     ctl.className = 'bctl'
-    ctl.addEventListener('dblclick', (e) => e.stopPropagation()) // don't reach #content's dblclick
+    // Only a double-click on an ICON is ours; the rest of .bctl is the transparent gutter
+    // bridge below, and double-clicking empty gutter must still reach #content (open source).
+    ctl.addEventListener('dblclick', (e) => {
+      if ((e.target as Element | null)?.closest('button')) e.stopPropagation()
+    })
     ctl.append(edit, cmt)
-    // Pull the icon column into the pane's left gutter regardless of the block's own
+    // Pull the icon row into the pane's left gutter regardless of the block's own
     // indentation (list items / blockquotes sit further right). The indent is padding-
     // based, so it is width-independent and stays correct across resizes.
     const pane = (el.closest('.bcell') as HTMLElement | null) ?? content
     const paneRect = pane.getBoundingClientRect()
     if (paneRect.width > 0) {
-      ctl.style.left = `${GUTTER_INSET_PX - (el.getBoundingClientRect().left - paneRect.left)}px`
+      const indent = el.getBoundingClientRect().left - paneRect.left
+      ctl.style.left = `${GUTTER_INSET_PX - indent}px`
+      // Stretch the control across the empty gutter up to the block's own left edge. The
+      // icons only appear while the BLOCK is hovered, and the gutter they are drawn in is
+      // NOT part of the block's box — so without this bridge the pointer loses the hover on
+      // its way to them and they vanish (or, worse, the neighbour lights up instead).
+      // `.bctl` is a DOM descendant of the block, so anywhere inside it still counts as
+      // hovering the block. Never narrower than the icons themselves (min-width in CSS).
+      ctl.style.width = `${Math.max(0, indent - GUTTER_INSET_PX)}px`
     }
     el.appendChild(ctl)
   }

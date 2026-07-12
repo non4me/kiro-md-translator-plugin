@@ -41,19 +41,31 @@ export function getPreviewHtml(
     .toolbtn:disabled { opacity: .35; cursor: default; }
     .toolbtn svg { width: 20px; height: 20px; display: block; }
     #translate-btn { margin-left: auto; } /* first right-aligned item pushes the group right */
-    #content { padding: 1rem 1.2rem 1rem 2.4rem; } /* left gutter holds the edit/comment icons */
+    /* The left gutter holds the edit/comment icons. It is wider than it looks: the icons sit
+       side by side (~30px) and the comment badge overhangs to the right, so a narrower gutter
+       would put the badge on top of the first characters. */
+    #content { padding: 1rem 1.2rem 1rem 3.2rem; }
     /* Bilingual: one grid where each block PAIR is a row (height = the taller side),
        so a paragraph is always exactly across from its translation (req 10.4). The
        whole view scrolls as one — no per-pane scroll sync. */
     #content.bilingual { padding: 0; }
     .bgrid { display: grid; grid-template-columns: 1fr 1fr; }
-    .bgrid .bcell { padding: .15rem 1.2rem .15rem 2.4rem; min-width: 0; overflow-wrap: anywhere; }
+    .bgrid .bcell { padding: .15rem 1.2rem .15rem 3.2rem; min-width: 0; overflow-wrap: anywhere; }
     .bgrid .bcell-l { border-right: 1px solid var(--vscode-panel-border); }
     /* Per-block edit + comment controls (req 10.8): outline icons stacked vertically in
        the left gutter, always visible in BOTH views (edit/comment left the tooltip). */
     #content [data-paragraph-index] { position: relative; }
-    .bctl { position: absolute; top: .05rem; display: flex; flex-direction: column;
-      gap: .15rem; align-items: center; } /* left is set per block in JS for gutter alignment */
+    /* The icons sit in a ROW, and the control is confined to its own block's height. Both
+       matter: stacked vertically the column was ~30px, which does not fit an ~18px list row,
+       so it hung into the NEXT item — and since every block is position:relative, the next
+       item (later in the DOM) painted its own controls ON TOP, making the comment icon of a
+       dense list item literally unclickable (the hit test landed on the neighbour).
+       The width is set per block in JS so the control's hit area BRIDGES the empty gutter to
+       the block's left edge: without it, moving the pointer from the text toward the icons
+       leaves the block, the hover drops, and the icons vanish before they can be reached. */
+    .bctl { position: absolute; top: 0; height: 100%; box-sizing: border-box;
+      padding-top: .05rem; display: flex; flex-direction: row; gap: .15rem;
+      align-items: flex-start; justify-content: flex-start; min-width: max-content; }
     .bctl button { display: flex; padding: 0; margin: 0; border: none; background: none;
       color: var(--vscode-foreground); cursor: pointer; opacity: 0; }
     /* Icons appear (dimmed) only while the block is hovered (req 10.8)... */
