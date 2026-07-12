@@ -5,7 +5,10 @@
  * now points to, or that it is orphaned. It prefers an orphan over a wrong
  * match — the trust-critical invariant — and never mutates the source.
  */
-import type { Block, CommentAnchor } from './types'
+import type { Block, CommentAnchor, FragmentAnchor, ResolvedLocation } from './types'
+
+/** Block context kept on each side of a fragment, to disambiguate a repeat. */
+export const FRAGMENT_CTX = 24
 
 /** Fuzzy match acceptance bar (Sørensen–Dice on character bigrams). */
 export const FUZZY_THRESHOLD = 0.7
@@ -52,18 +55,72 @@ export function diceSimilarity(a: string, b: string): number {
 }
 
 /** Build an anchor for `paragraphIndex` from the current blocks (undefined if the
- *  block is gone). `prefix`/`suffix` are the adjacent blocks' text (context). */
-export function makeAnchor(blocks: Block[], paragraphIndex: number): CommentAnchor | undefined {
+ *  block is gone). `prefix`/`suffix` are the adjacent blocks' text (context). When
+ *  `fragment` (a char span within the block's text) is given, the anchor also pins the
+ *  comment to that sub-span, with its own in-block prefix/suffix to survive repeats. */
+export function makeAnchor(
+  blocks: Block[],
+  paragraphIndex: number,
+  fragment?: { start: number; end: number },
+): CommentAnchor | undefined {
   const i = blocks.findIndex((b) => b.paragraphIndex === paragraphIndex)
   if (i < 0) return undefined
   const quote = blocks[i].text
-  return {
+  const anchor: CommentAnchor = {
     quote,
     prefix: i > 0 ? blocks[i - 1].text : '',
     suffix: i < blocks.length - 1 ? blocks[i + 1].text : '',
     hintLine: blocks[i].startLine,
     quoteHash: hashString(quote),
   }
+  if (fragment && fragment.start < fragment.end && fragment.end <= quote.length) {
+    anchor.fragment = {
+      quote: quote.slice(fragment.start, fragment.end),
+      prefix: quote.slice(Math.max(0, fragment.start - FRAGMENT_CTX), fragment.start),
+      suffix: quote.slice(fragment.end, fragment.end + FRAGMENT_CTX),
+    }
+  }
+  return anchor
+}
+
+/** Locate a fragment's char span within a block's current text, or undefined if its
+ *  text is gone (→ orphan, never a guess). Repeats are disambiguated by in-block context. */
+export function locateFragment(
+  fragment: FragmentAnchor,
+  blockText: string,
+): { start: number; end: number } | undefined {
+  const q = fragment.quote
+  if (!q) return undefined
+  const hits: number[] = []
+  for (let at = blockText.indexOf(q); at >= 0; at = blockText.indexOf(q, at + 1)) hits.push(at)
+  if (hits.length === 0) return undefined
+  let best = hits[0]
+  if (hits.length > 1) {
+    let bestScore = -Infinity
+    for (const at of hits) {
+      const before = blockText.slice(Math.max(0, at - FRAGMENT_CTX), at)
+      const after = blockText.slice(at + q.length, at + q.length + FRAGMENT_CTX)
+      const score = diceSimilarity(before, fragment.prefix) + diceSimilarity(after, fragment.suffix)
+      if (score > bestScore) {
+        bestScore = score
+        best = at
+      }
+    }
+  }
+  return { start: best, end: best + q.length }
+}
+
+/** Resolve a thread to its block AND, for a fragment comment, its char span within
+ *  that block. A whole-block comment (no fragment) spans the block. A fragment whose
+ *  text no longer exists in the matched block is an orphan — never the whole block. */
+export function resolveThread(anchor: CommentAnchor, blocks: Block[]): ResolvedLocation | undefined {
+  const paragraphIndex = matchThread(anchor, blocks)
+  if (paragraphIndex === undefined) return undefined
+  const block = blocks.find((b) => b.paragraphIndex === paragraphIndex)
+  if (!block) return undefined
+  if (!anchor.fragment) return { paragraphIndex, start: 0, end: block.text.length }
+  const loc = locateFragment(anchor.fragment, block.text)
+  return loc ? { paragraphIndex, start: loc.start, end: loc.end } : undefined
 }
 
 /** Surrounding-context similarity of a candidate block to the anchor (0..2). */

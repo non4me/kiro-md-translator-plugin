@@ -1,6 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import fc from 'fast-check'
-import { diceSimilarity, normalize, makeAnchor, matchThread } from '../src/anchoring'
+import {
+  diceSimilarity,
+  normalize,
+  makeAnchor,
+  matchThread,
+  locateFragment,
+  resolveThread,
+} from '../src/anchoring'
 import type { Block } from '../src/types'
 
 function blocksFrom(texts: string[]): Block[] {
@@ -114,5 +121,66 @@ describe('matchThread', () => {
       ),
       { numRuns: 100 },
     )
+  })
+})
+
+describe('fragment anchoring (stage 3)', () => {
+  const blocks = blocksFrom([
+    'Intro block.',
+    'The quick brown fox jumps over the lazy dog.',
+    'Outro block.',
+  ])
+
+  it('an anchor without a fragment resolves to the whole block (backward compatible)', () => {
+    const a = makeAnchor(blocks, 1)!
+    expect(a.fragment).toBeUndefined()
+    expect(resolveThread(a, blocks)).toEqual({
+      paragraphIndex: 1,
+      start: 0,
+      end: blocks[1].text.length,
+    })
+  })
+
+  it('an anchor with a fragment pins the sub-span', () => {
+    const at = blocks[1].text.indexOf('brown fox')
+    const a = makeAnchor(blocks, 1, { start: at, end: at + 'brown fox'.length })!
+    expect(a.fragment?.quote).toBe('brown fox')
+    expect(resolveThread(a, blocks)).toEqual({ paragraphIndex: 1, start: at, end: at + 9 })
+  })
+
+  it('a fragment that repeats in the block is disambiguated by in-block context', () => {
+    const b = blocksFrom(['x', 'go left, then go right', 'y'])
+    const second = b[1].text.indexOf('go', b[1].text.indexOf('go') + 1)
+    const a = makeAnchor(b, 1, { start: second, end: second + 2 })!
+    const r = resolveThread(a, b)!
+    expect(r.start).toBe(second) // the SECOND 'go', not the first
+  })
+
+  it('a fragment whose text is gone becomes an orphan, never the whole block', () => {
+    const at = blocks[1].text.indexOf('quick')
+    const a = makeAnchor(blocks, 1, { start: at, end: at + 5 })!
+    const edited = blocksFrom([
+      'Intro block.',
+      'The BROWN fox jumps over the lazy dog.', // 'quick' removed; block still fuzzy-matches
+      'Outro block.',
+    ])
+    expect(matchThread(a, edited)).toBe(1) // the block is still found…
+    expect(resolveThread(a, edited)).toBeUndefined() // …but the fragment is orphaned
+  })
+
+  it('a fragment survives an edit elsewhere in its block', () => {
+    const at = blocks[1].text.indexOf('fox')
+    const a = makeAnchor(blocks, 1, { start: at, end: at + 3 })!
+    const edited = blocksFrom([
+      'Intro block.',
+      'The quick brown fox leaps over the lazy cat.', // edited after 'fox'
+      'Outro block.',
+    ])
+    const r = resolveThread(a, edited)!
+    expect(edited[1].text.slice(r.start, r.end)).toBe('fox')
+  })
+
+  it('locateFragment returns undefined when the quote is absent', () => {
+    expect(locateFragment({ quote: 'zzz', prefix: '', suffix: '' }, 'no such text here')).toBeUndefined()
   })
 })

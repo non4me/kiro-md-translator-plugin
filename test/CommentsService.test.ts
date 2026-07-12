@@ -386,3 +386,57 @@ describe('auto-import', () => {
     expect(store.size).toBe(0)
   })
 })
+
+describe('fragment comments (stage 3)', () => {
+  const text = 'The quick brown fox jumps.'
+  const fragOf = (q: string) => ({ quote: q, prefix: '', suffix: '' })
+
+  it('a fragment comment is a thread separate from the whole-block one', () => {
+    const s = svc(memIO().io)
+    s.reanchor(blocksFrom([text]), text)
+    s.addComment(0, 'about the whole block')
+    s.addComment(0, 'about the fox', fragOf('fox'))
+    const res = s.reanchor(blocksFrom([text]), text)
+    expect(res.forBlocks.find((b) => b.paragraphIndex === 0)?.count).toBe(2)
+  })
+
+  it('a second comment on the same fragment joins its thread', () => {
+    const s = svc(memIO().io)
+    s.reanchor(blocksFrom([text]), text)
+    s.addComment(0, 'one', fragOf('fox'))
+    s.addComment(0, 'two', fragOf('fox'))
+    expect(s.getThreadComments(0)).toHaveLength(2)
+    const res = s.reanchor(blocksFrom([text]), text)
+    expect(res.forBlocks.find((b) => b.paragraphIndex === 0)?.count).toBe(2)
+  })
+
+  it('a comment on a different fragment starts a new thread', () => {
+    const s = svc(memIO().io)
+    s.reanchor(blocksFrom([text]), text)
+    s.addComment(0, 'fox note', fragOf('fox'))
+    s.addComment(0, 'quick note', fragOf('quick'))
+    expect(s.getThreadComments(0)).toHaveLength(2)
+  })
+
+  it('a fragment orphans when its text is gone, even though the block remains', () => {
+    const s = svc(memIO().io)
+    s.reanchor(blocksFrom([text]), text)
+    s.addComment(0, 'fox note', fragOf('fox'))
+    const edited = 'The quick brown CAT jumps.'
+    const res = s.reanchor(blocksFrom([edited]), edited)
+    expect(res.forBlocks.find((b) => b.paragraphIndex === 0)).toBeUndefined()
+    expect(res.orphaned).toHaveLength(1)
+  })
+
+  it('a fragment survives persist + reload', async () => {
+    const { io } = memIO()
+    const s = svc(io)
+    s.reanchor(blocksFrom([text]), text)
+    s.addComment(0, 'fox note', fragOf('fox'))
+    await s.flush()
+    const s2 = svc(io)
+    await s2.load()
+    const res = s2.reanchor(blocksFrom([text]), text)
+    expect(res.forBlocks.find((b) => b.paragraphIndex === 0)?.count).toBe(1)
+  })
+})

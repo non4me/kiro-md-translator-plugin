@@ -69,10 +69,25 @@ export interface Block {
 }
 
 /**
+ * A comment bound to a text FRAGMENT within its block (affordance redesign,
+ * stage 3). `quote` is the trimmed selected text; `prefix`/`suffix` are the block
+ * text immediately around it, to disambiguate a fragment that repeats in the block.
+ * Absent on a whole-block comment — its absence IS backward compatibility: an old
+ * anchor has no fragment and resolves to the entire block.
+ */
+export interface FragmentAnchor {
+  quote: string
+  prefix: string
+  suffix: string
+}
+
+/**
  * Content anchor that survives edits to the original (req 11.4). `quote` is the
- * primary selector; `prefix`/`suffix` (adjacent block text) disambiguate ties;
- * `hintLine` is a non-authoritative position hint; `quoteHash` is a fast-equality
- * digest of `quote`. Re-anchoring prefers an orphan over a wrong match (req 11.9).
+ * primary selector (the BLOCK's text — this is what finds the block); `prefix`/`suffix`
+ * (adjacent block text) disambiguate ties; `hintLine` is a non-authoritative position
+ * hint; `quoteHash` is a fast-equality digest of `quote`. `fragment`, when present,
+ * pins the comment to a sub-span of that block. Re-anchoring prefers an orphan over a
+ * wrong match (req 11.9).
  */
 export interface CommentAnchor {
   quote: string
@@ -80,6 +95,15 @@ export interface CommentAnchor {
   suffix: string
   hintLine: number
   quoteHash: string
+  fragment?: FragmentAnchor
+}
+
+/** Where a thread resolves in the current document: the block and, for a fragment
+ *  comment, the character span within that block's text (start..end). */
+export interface ResolvedLocation {
+  paragraphIndex: number
+  start: number
+  end: number
 }
 
 export interface Comment {
@@ -127,7 +151,7 @@ export type WebviewMessage =
   | { type: 'displayModeChanged'; displaying: 'source' | 'translation' }
   | { type: 'requestComments' }
   | { type: 'requestCommentThread'; paragraphIndex: number }
-  | { type: 'addComment'; paragraphIndex: number; body: string }
+  | { type: 'addComment'; paragraphIndex: number; body: string; fragment?: FragmentAnchor }
   | { type: 'editComment'; commentId: string; body: string }
   | { type: 'deleteComment'; commentId: string }
   | { type: 'openSettings' }
@@ -313,7 +337,7 @@ export interface ICommentsService {
   load(): Promise<void>
   reanchor(blocks: Block[], sourceText: string): ReanchorResult
   getThreadComments(paragraphIndex: number): Comment[]
-  addComment(paragraphIndex: number, body: string): Comment | undefined
+  addComment(paragraphIndex: number, body: string, fragment?: FragmentAnchor): Comment | undefined
   editComment(commentId: string, body: string): void
   deleteComment(commentId: string): void
   flush(): Thenable<void>

@@ -12,10 +12,11 @@ import type {
   CommentThread,
   CommentsFile,
   BlockCommentCount,
+  FragmentAnchor,
   ICommentsService,
   ReanchorResult,
 } from './types'
-import { hashString, makeAnchor, matchThread } from './anchoring'
+import { hashString, makeAnchor, matchThread, locateFragment } from './anchoring'
 import { VERSION } from './commentSidecar'
 import { SidecarBackend, type CommentBackend } from './commentBackends'
 
@@ -147,12 +148,24 @@ export class CommentsService implements ICommentsService {
       } else {
         idx = matchThread(thread.anchor, blocks)
       }
-      if (idx === undefined) {
+      // A fragment thread needs the fragment itself to still exist in the matched block,
+      // not just the block — otherwise it is orphaned (never re-pinned to the whole block).
+      const block = idx === undefined ? undefined : blocks.find((b) => b.paragraphIndex === idx)
+      const fragmentGone =
+        block !== undefined &&
+        thread.anchor.fragment !== undefined &&
+        locateFragment(thread.anchor.fragment, block.text) === undefined
+      if (idx === undefined || fragmentGone) {
         thread.orphaned = true
       } else {
         thread.orphaned = false
         const fresh = makeAnchor(blocks, idx)
-        if (fresh) thread.anchor = fresh
+        if (fresh) {
+          // Preserve the fragment across the block-anchor refresh — makeAnchor only
+          // rebuilds the block-level context (quote/prefix/suffix/hintLine).
+          if (thread.anchor.fragment) fresh.fragment = thread.anchor.fragment
+          thread.anchor = fresh
+        }
         const arr = this.live.get(idx) ?? []
         arr.push(thread)
         this.live.set(idx, arr)
@@ -179,18 +192,26 @@ export class CommentsService implements ICommentsService {
     return (this.live.get(paragraphIndex) ?? []).flatMap((t) => t.comments)
   }
 
-  addComment(paragraphIndex: number, body: string): Comment | undefined {
+  /** Add a comment to a block, or to a text FRAGMENT within it (stage 3). One fragment is
+   *  one thread: a second comment on the same fragment (identical quote) joins its
+   *  discussion; a comment on a different fragment — even an overlapping one — starts a new
+   *  thread. A whole-block comment (no fragment) joins/creates the block's fragment-less thread. */
+  addComment(paragraphIndex: number, body: string, fragment?: FragmentAnchor): Comment | undefined {
     const text = body.trim()
     if (!text) return undefined
     const ts = this.now()
     const comment: Comment = { id: this.genId(), createdAt: ts, updatedAt: ts, body: text }
-    let thread = this.live.get(paragraphIndex)?.[0]
+    const threads = this.live.get(paragraphIndex) ?? []
+    let thread = fragment
+      ? threads.find((t) => t.anchor.fragment?.quote === fragment.quote)
+      : threads.find((t) => !t.anchor.fragment)
     if (!thread) {
       const anchor = makeAnchor(this.lastBlocks, paragraphIndex)
       if (!anchor) return undefined // block no longer present → cannot anchor
+      if (fragment) anchor.fragment = fragment
       thread = { anchor, orphaned: false, comments: [] }
       this.data.threads.push(thread)
-      this.live.set(paragraphIndex, [thread])
+      this.live.set(paragraphIndex, [...threads, thread])
     }
     thread.comments.push(comment)
     this.stampAndFlush()
