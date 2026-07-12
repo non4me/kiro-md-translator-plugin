@@ -254,10 +254,10 @@ export class PreviewController implements IPreviewController {
         this.handlePreviewScroll(message.topParagraphIndex)
         break
       case 'editParagraph':
-        void this.handleEditParagraph(message.paragraphIndex)
+        void this.handleEditParagraph(message.paragraphIndex, message.lastIndex)
         break
       case 'saveParagraph':
-        void this.handleSaveParagraph(message.paragraphIndex, message.storageText)
+        void this.handleSaveParagraph(message.paragraphIndex, message.storageText, message.lastIndex)
         break
       case 'modalSyncRequest':
         void this.handleModalSync(message.field, message.text)
@@ -386,8 +386,13 @@ export class PreviewController implements IPreviewController {
     }
   }
 
-  private async handleEditParagraph(paragraphIndex: number): Promise<void> {
-    const storageText = this.paragraphText(paragraphIndex) ?? ''
+  private async handleEditParagraph(
+    paragraphIndex: number,
+    lastIndex: number = paragraphIndex,
+  ): Promise<void> {
+    // Multi-block edit (req 10.16): load the raw source of the WHOLE selected block range
+    // as one editable text. A single-block edit is the first===last case (unchanged).
+    const storageText = this.paragraphRangeText(paragraphIndex, lastIndex) ?? ''
     const cfg = this.deps.settings.getConfig()
     const cached = cfg.targetLanguage
       ? this.deps.cache.get(storageText, cfg.targetLanguage)
@@ -396,7 +401,8 @@ export class PreviewController implements IPreviewController {
     // SEGMENT (code/inline-code excluded), not per whole paragraph, so a paragraph
     // with any inline markup is never a single-key hit — on a miss, translate the
     // paragraph (as hover does) and fill the Target field instead of leaving it blank (req 7.9).
-    this.deps.post({ type: 'openEditModal', paragraphIndex, storageText, targetText: cached ?? '' })
+    // The Target field is a display-only preview — only storageText is written back on save.
+    this.deps.post({ type: 'openEditModal', paragraphIndex, lastIndex, storageText, targetText: cached ?? '' })
     if (cached !== undefined || !cfg.targetLanguage || !storageText) return
     this.deps.post({ type: 'editModalSyncStart', field: 'target' })
     try {
@@ -414,12 +420,17 @@ export class PreviewController implements IPreviewController {
     }
   }
 
-  private async handleSaveParagraph(paragraphIndex: number, storageText: string): Promise<void> {
+  private async handleSaveParagraph(
+    paragraphIndex: number,
+    storageText: string,
+    lastIndex: number = paragraphIndex,
+  ): Promise<void> {
     const newSource = this.deps.engine.replaceParagraphInSource(
       this.sourceText,
       this.lineMap,
       paragraphIndex,
       storageText,
+      lastIndex,
     )
     this.sourceText = newSource
     if (this.deps.applyEdit) await this.deps.applyEdit(newSource)
@@ -593,6 +604,21 @@ export class PreviewController implements IPreviewController {
     return this.sourceText
       .split('\n')
       .slice(mapping.startLine, mapping.endLine + 1)
+      .join('\n')
+      .trim()
+  }
+
+  /** Raw source of a whole block range (req 10.16): lines [first.startLine .. last.endLine].
+   *  first===last is the single-block case (equals `paragraphText`). */
+  private paragraphRangeText(first: number, last: number): string | undefined {
+    const a = this.lineMap.find((m) => m.paragraphIndex === first)
+    const b = this.lineMap.find((m) => m.paragraphIndex === last)
+    if (!a || !b) return undefined
+    const startLine = Math.min(a.startLine, b.startLine)
+    const endLine = Math.max(a.endLine, b.endLine)
+    return this.sourceText
+      .split('\n')
+      .slice(startLine, endLine + 1)
       .join('\n')
       .trim()
   }

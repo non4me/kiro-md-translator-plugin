@@ -282,4 +282,64 @@ describe('TranslationEngine', () => {
     const lineMap = [{ paragraphIndex: 0, startLine: 1, endLine: 1 }]
     expect(engine.replaceParagraphInSource(src, lineMap, 0, 'B')).toBe('a\nB\nc')
   })
+
+  it('replaceParagraphInSource splices a whole block RANGE, leaving the rest untouched (10.16)', () => {
+    const { engine } = makeEngine(async (segs) => segs)
+    const src = 'h\na\nb\nc\nz'
+    const lineMap = [
+      { paragraphIndex: 0, startLine: 1, endLine: 1 },
+      { paragraphIndex: 1, startLine: 2, endLine: 2 },
+      { paragraphIndex: 2, startLine: 3, endLine: 3 },
+    ]
+    // Replace blocks 0..2 (lines 1..3) with a two-line text; line 0 (h) and line 4 (z) stay put.
+    expect(engine.replaceParagraphInSource(src, lineMap, 0, 'X\nY', 2)).toBe('h\nX\nY\nz')
+  })
+
+  it('replaceParagraphInSource first===last (and omitted lastIndex) equals the single-block splice (10.16)', () => {
+    const { engine } = makeEngine(async (segs) => segs)
+    const src = 'a\nb\nc'
+    const lineMap = [
+      { paragraphIndex: 0, startLine: 0, endLine: 0 },
+      { paragraphIndex: 1, startLine: 1, endLine: 1 },
+      { paragraphIndex: 2, startLine: 2, endLine: 2 },
+    ]
+    expect(engine.replaceParagraphInSource(src, lineMap, 1, 'B', 1)).toBe('a\nB\nc')
+    expect(engine.replaceParagraphInSource(src, lineMap, 1, 'B')).toBe('a\nB\nc') // backward compatible
+  })
+
+  // Feature: kiro-md-translator-plugin, Property 29: a block-range edit splices exactly the selected range
+  it('Property 29: a block-range splice replaces exactly the range and preserves every other line', () => {
+    fc.assert(
+      fc.property(
+        fc.array(fc.integer({ min: 1, max: 3 }), { minLength: 1, maxLength: 8 }),
+        fc.nat(),
+        fc.nat(),
+        (blockSizes, a, b) => {
+          const { engine } = makeEngine(async (segs) => segs)
+          // Contiguous multi-line blocks over UNIQUE lines L0..L{n-1} — so membership is a clean oracle.
+          const lineMap: { paragraphIndex: number; startLine: number; endLine: number }[] = []
+          let line = 0
+          blockSizes.forEach((size, i) => {
+            lineMap.push({ paragraphIndex: i, startLine: line, endLine: line + size - 1 })
+            line += size
+          })
+          const lines = Array.from({ length: line }, (_, i) => `L${i}`)
+          const src = lines.join('\n')
+          const nBlocks = blockSizes.length
+          let first = a % nBlocks
+          let last = b % nBlocks
+          if (first > last) [first, last] = [last, first]
+          const startLine = lineMap[first].startLine
+          const endLine = lineMap[last].endLine
+          const kept = [...lines.slice(0, startLine), ...lines.slice(endLine + 1)]
+          const result = engine.replaceParagraphInSource(src, lineMap, first, 'SENTINEL_NEW', last)
+          const resultLines = result.split('\n')
+          // The sentinel is present; stripping it leaves exactly the kept lines in order (off-by-one dies here).
+          expect(resultLines).toContain('SENTINEL_NEW')
+          expect(resultLines.filter((l) => l !== 'SENTINEL_NEW')).toEqual(kept)
+        },
+      ),
+      { numRuns: 100 },
+    )
+  })
 })

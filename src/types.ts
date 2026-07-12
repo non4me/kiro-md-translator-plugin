@@ -166,8 +166,8 @@ export type WebviewMessage =
   | { type: 'translateRequest' }
   | { type: 'paragraphHover'; paragraphIndex: number }
   | { type: 'paragraphHoverEnd'; paragraphIndex: number }
-  | { type: 'editParagraph'; paragraphIndex: number }
-  | { type: 'saveParagraph'; paragraphIndex: number; storageText: string; targetText: string }
+  | { type: 'editParagraph'; paragraphIndex: number; lastIndex?: number }
+  | { type: 'saveParagraph'; paragraphIndex: number; lastIndex?: number; storageText: string; targetText: string }
   | { type: 'modalSyncRequest'; field: 'storage' | 'target'; text: string }
   | { type: 'cancelParagraphEdit' }
   | { type: 'scrollChanged'; topParagraphIndex: number }
@@ -191,7 +191,7 @@ export type ExtensionMessage =
   | { type: 'tooltipLoading'; paragraphIndex: number }
   | { type: 'tooltipError'; paragraphIndex: number; message: string }
   | { type: 'hideTooltip' }
-  | { type: 'openEditModal'; paragraphIndex: number; storageText: string; targetText: string }
+  | { type: 'openEditModal'; paragraphIndex: number; lastIndex?: number; storageText: string; targetText: string }
   | { type: 'editModalSyncStart'; field: 'storage' | 'target' }
   | { type: 'editModalSyncComplete'; field: 'storage' | 'target'; text: string }
   | { type: 'editModalSyncError'; field: 'storage' | 'target'; message: string }

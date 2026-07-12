@@ -53,6 +53,7 @@ let threadReqIndex = -1
 let threadAnchorEl: HTMLElement | undefined
 
 let editIndex = -1
+let editLastIndex = -1 // the last block of a multi-block edit range (=== editIndex for a single block)
 let suppressScroll = false
 let hoverTimer: number | undefined
 let hideTimer: number | undefined
@@ -496,6 +497,7 @@ modalSave.addEventListener('click', () => {
   post({
     type: 'saveParagraph',
     paragraphIndex: editIndex,
+    lastIndex: editLastIndex,
     storageText: modalStorage.value,
     targetText: modalTarget.value,
   })
@@ -661,9 +663,12 @@ document.addEventListener('selectionchange', positionSelToolbar)
 // A pointer press inside the toolbar must not collapse the text selection before the click.
 selToolbar.addEventListener('mousedown', (e) => e.preventDefault())
 selEdit.addEventListener('click', () => {
-  const idx = Number(selToolbar.dataset.firstIndex)
+  const first = Number(selToolbar.dataset.firstIndex)
+  const last = Number(selToolbar.dataset.lastIndex)
   hideSelToolbar()
-  if (Number.isFinite(idx)) post({ type: 'editParagraph', paragraphIndex: idx })
+  if (Number.isFinite(first)) {
+    post({ type: 'editParagraph', paragraphIndex: first, lastIndex: Number.isFinite(last) ? last : first })
+  }
 })
 selComment.addEventListener('click', () => {
   // Read the selection BEFORE hiding the toolbar (it is still live here — the toolbar's
@@ -895,6 +900,7 @@ window.addEventListener('message', (event: MessageEvent) => {
     }
     case 'openEditModal':
       editIndex = msg.paragraphIndex as number
+      editLastIndex = (msg.lastIndex ?? msg.paragraphIndex) as number
       modalStorage.value = String(msg.storageText)
       modalTarget.value = String(msg.targetText)
       modalError.textContent = ''

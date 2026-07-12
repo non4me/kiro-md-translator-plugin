@@ -198,17 +198,26 @@ export class TranslationEngine implements ITranslationEngine {
     return unified().use(remarkGfm).use(remarkStringify).stringify(mdast)
   }
 
+  /** Surgically replace one block — or a whole block RANGE (req 10.16) — with new source
+   *  text, splicing exactly the lines [firstBlock.startLine .. lastBlock.endLine] and leaving
+   *  everything else byte-identical (never a full re-serialize). `lastIndex` defaults to
+   *  `paragraphIndex`, so the single-block call (req 7.14) is unchanged; min/max guards an
+   *  inverted pair. */
   replaceParagraphInSource(
     source: string,
     lineMap: LineMapping[],
     paragraphIndex: number,
     newStorageText: string,
+    lastIndex: number = paragraphIndex,
   ): string {
-    const mapping = lineMap.find((m) => m.paragraphIndex === paragraphIndex)
-    if (!mapping) return source
+    const first = lineMap.find((m) => m.paragraphIndex === paragraphIndex)
+    const last = lineMap.find((m) => m.paragraphIndex === lastIndex)
+    if (!first || !last) return source
+    const startLine = Math.min(first.startLine, last.startLine)
+    const endLine = Math.max(first.endLine, last.endLine)
     const lines = source.split('\n')
-    const before = lines.slice(0, mapping.startLine)
-    const after = lines.slice(mapping.endLine + 1)
+    const before = lines.slice(0, startLine)
+    const after = lines.slice(endLine + 1)
     return [...before, ...newStorageText.split('\n'), ...after].join('\n')
   }
 
