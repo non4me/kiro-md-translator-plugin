@@ -45,6 +45,34 @@ describe('commentSpans', () => {
     expect(texts('--[[ the header\n     the tail ]]\nx = 1', 'lua')).toEqual(['the header', 'the tail'])
   })
 
+  it('handles a Lua long bracket at ANY level, not just --[[', () => {
+    // A fixed `--[[` pair would fall through to the `--` line marker, put `[==[`
+    // inside the span, and splice the translation over the opener — turning the
+    // body of the comment into live code.
+    const code = '--[==[ the header\nprint("inside")\n]==]\nprint("real")'
+    expect(texts(code, 'lua')).toContain('the header')
+    const spans = commentSpans(code, 'lua')
+    expect(spliceComments(code, spans, spans.map(() => 'ПЕРЕВОД'))).toContain('--[==[ ПЕРЕВОД')
+    expect(spliceComments(code, spans, spans.map(() => 'ПЕРЕВОД'))).toContain(']==]\nprint("real")')
+  })
+
+  it('does NOT treat -- inside a Lua long string as a comment', () => {
+    // Otherwise the span swallows the `]]` terminator and the translation destroys it.
+    expect(texts('s = [[ a -- b ]]\nx = 1 -- the note', 'lua')).toEqual(['the note'])
+  })
+
+  it('does NOT read the end of a JS regex literal as a comment', () => {
+    // `/\/\//` puts an escaped slash next to the closing slash. Read naively, that
+    // `//` starts a comment and the rest of the statement is translated away.
+    expect(texts(String.raw`url.replace(/\/\//g, '/')`, 'js')).toEqual([])
+    expect(texts(String.raw`const re = /\/\//; call(x) // the note`, 'js')).toEqual(['the note'])
+    // Division must still not be mistaken for a regex.
+    expect(texts('const r = a / b // the ratio', 'js')).toEqual(['the ratio'])
+    expect(texts('const r = (a + b) / c // the mean', 'ts')).toEqual(['the mean'])
+    // A regex after a keyword is still a regex.
+    expect(texts(String.raw`return /a\/\//.test(s) // matched`, 'js')).toEqual(['matched'])
+  })
+
   it('survives a Rust lifetime (no char-literal delimiter)', () => {
     expect(texts("fn f<'a>(s: &'a str) {} // borrow it", 'rust')).toEqual(['borrow it'])
   })
@@ -94,6 +122,10 @@ describe('spliceComments', () => {
     const code = 'x = 1 // one'
     const spans = commentSpans(code, 'js')
     expect(spliceComments(code, spans, ['один\nдва'])).toBe('x = 1 // один два')
+    expect(spliceComments(code, spans, ['один\r\nдва'])).toBe('x = 1 // один два')
+    // U+2028/U+2029 are line terminators in JavaScript — \n-only collapsing misses them.
+    expect(spliceComments(code, spans, ['один\u2028два'])).toBe('x = 1 // один два')
+    expect(spliceComments(code, spans, ['один\u2029два'])).toBe('x = 1 // один два')
   })
 
   it('discards a translation containing the block closer', () => {
