@@ -232,6 +232,12 @@
             ],
             "default": "after-paragraph",
             "markdownDescription": "Where inline comments are written. Applies only when Comment Storage is `inline`."
+          },
+          "kiro-md-translator.commentAutoImport": {
+            "type": "boolean",
+            "order": 3,
+            "default": true,
+            "markdownDescription": "When a document is opened, look in the other comment storages and move anything found there into the selected one — so changing Comment Storage never makes comments disappear.\n\n⚠️ When storage is `inline`, this **modifies and saves the Markdown document itself**.\n\n[Import all project comments into the current storage](command:kiro-md-translator.importComments)"
           }
         }
       }

@@ -56,6 +56,10 @@ export class SettingsManager implements ISettingsManager {
     return this.cfg().get<CommentPlacement>('commentPlacement', 'after-paragraph')
   }
 
+  getCommentAutoImport(): boolean {
+    return this.cfg().get<boolean>('commentAutoImport', true)
+  }
+
   getCommentsEnabled(): boolean {
     return this.cfg().get<boolean>('commentsEnabled', true)
   }
@@ -96,6 +100,7 @@ export class SettingsManager implements ISettingsManager {
       glossary: this.getGlossary(),
       commentStorage: this.getCommentStorage(),
       commentPlacement: this.getCommentPlacement(),
+      commentAutoImport: this.getCommentAutoImport(),
     }
   }
 

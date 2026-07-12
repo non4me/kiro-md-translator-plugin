@@ -51,6 +51,8 @@ export interface PluginConfig {
   glossary: string[]
   commentStorage: CommentStorage
   commentPlacement: CommentPlacement
+  /** Merge comments left in the other storages into the selected one on open (req 11.18). */
+  commentAutoImport: boolean
 }
 
 // ---------------------------------------------------------------------------
@@ -315,6 +317,9 @@ export interface ICommentsService {
   editComment(commentId: string, body: string): void
   deleteComment(commentId: string): void
   flush(): Thenable<void>
+  /** Finish an auto-import now that the blocks are known (req 11.18). Optional: test
+   *  doubles and comment-less setups may omit it. */
+  completeImport?(): Promise<void>
 }
 
 export interface IPreviewController {

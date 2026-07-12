@@ -36,6 +36,12 @@ export class CommentsService implements ICommentsService {
   /** paragraphIndex → the live threads resolved there (usually one). */
   private live = new Map<number, CommentThread[]>()
   private flushTimer: ReturnType<typeof setTimeout> | undefined
+  /** Backends to pull comments in from at load (auto-import). Empty ⇒ feature off. */
+  private importSources: CommentBackend[] = []
+  /** The sources that actually contributed at the last load — the ones to clear in phase 2. */
+  private pendingImport: CommentBackend[] = []
+  /** How many comments the last `load()` pulled in from other stores. 0 ⇒ nothing to move. */
+  importedCount = 0
 
   constructor(
     docUri: vscode.Uri,
@@ -51,8 +57,61 @@ export class CommentsService implements ICommentsService {
     private readonly saveSource?: () => Promise<boolean>,
   ) {}
 
+  /**
+   * Phase 1 of auto-import (req 11.18): read the current store, then merge whatever the
+   * OTHER stores still hold — a storage setting flipped while this document was closed
+   * leaves its comments behind, and reading only the selected store makes them look lost.
+   * Read-only: the move itself is `completeImport`, which needs the block list.
+   */
   async load(): Promise<void> {
     this.data = await this.backend.load(this.getSource())
+    this.importedCount = 0
+    this.pendingImport = []
+    for (const source of this.importSources) {
+      if (source.medium === this.backend.medium) continue
+      const added = this.mergeIn(await source.load(this.getSource()))
+      if (added > 0) {
+        this.importedCount += added
+        this.pendingImport.push(source)
+      }
+    }
+  }
+
+  /** Auto-import sources; set before `load()`. Empty (the default) disables the feature. */
+  setImportSources(sources: CommentBackend[]): void {
+    this.importSources = sources
+  }
+
+  /**
+   * Phase 2 of auto-import: move what `load` merged into the current backend and clear the
+   * sources it came from, under `migrateFrom`'s durability invariant.
+   *
+   * Deliberately NOT done inside `load`: the block list does not exist yet at that point,
+   * and after-paragraph placement needs it — serializing without blocks would dump every
+   * carrier at end-of-file. Hence the `lastBlocks` guard. Nothing imported ⇒ nothing runs,
+   * so merely opening a document never touches it.
+   */
+  async completeImport(): Promise<void> {
+    if (this.pendingImport.length === 0 || this.lastBlocks.length === 0) return
+    const sources = this.pendingImport
+    this.pendingImport = []
+    for (const source of sources) await this.migrateFrom(source)
+  }
+
+  /** Union `other` into the live set, de-duplicating by comment id — the same comment can
+   *  sit in two stores after a half-finished move. Returns how many were added; zero must
+   *  NOT trigger a write, or opening a document would dirty it for nothing. */
+  private mergeIn(other: CommentsFile): number {
+    const seen = new Set(this.data.threads.flatMap((t) => t.comments.map((c) => c.id)))
+    let added = 0
+    for (const thread of other.threads) {
+      const fresh = thread.comments.filter((c) => !seen.has(c.id))
+      if (fresh.length === 0) continue
+      fresh.forEach((c) => seen.add(c.id))
+      this.data.threads.push({ ...thread, comments: fresh, orphaned: false })
+      added += fresh.length
+    }
+    return added
   }
 
   /**

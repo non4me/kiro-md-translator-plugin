@@ -14,6 +14,20 @@ describe('SettingsManager', () => {
     expect(s.getCustomEndpoint()).toBeUndefined()
   })
 
+  it('comment storage defaults to sidecar, auto-import to on', () => {
+    const s = new SettingsManager()
+    expect(s.getCommentStorage()).toBe('sidecar')
+    expect(s.getCommentAutoImport()).toBe(true)
+  })
+
+  it('reads the draft storage and a disabled auto-import', () => {
+    __setConfig('kiro-md-translator', 'commentStorage', 'draft')
+    __setConfig('kiro-md-translator', 'commentAutoImport', false)
+    const cfg = new SettingsManager().getConfig()
+    expect(cfg.commentStorage).toBe('draft')
+    expect(cfg.commentAutoImport).toBe(false)
+  })
+
   it('reads configured values into a PluginConfig snapshot', () => {
     __setConfig('kiro-md-translator', 'targetLanguage', 'ru')
     __setConfig('kiro-md-translator', 'translationMode', 'automatic')

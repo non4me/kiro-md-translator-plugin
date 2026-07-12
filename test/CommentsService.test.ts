@@ -8,10 +8,11 @@ import {
   sidecarUri,
   type SidecarIO,
 } from '../src/CommentsService'
-import { SidecarBackend } from '../src/commentBackends'
+import { SidecarBackend, InlineAfterBackend, DraftBackend } from '../src/commentBackends'
 import type { Block, CommentsFile } from '../src/types'
 
 const docUri = vscode.Uri.parse('file:///doc/api.md') as never
+const storageRoot = vscode.Uri.parse('file:///global/storage') as never
 
 function memIO() {
   const store = new Map<string, string>()
@@ -221,5 +222,115 @@ describe('CommentsService', () => {
     await s.load()
     const res = s.reanchor(blocksFrom(['A']), 'A')
     expect(res.forBlocks).toEqual([])
+  })
+})
+
+/**
+ * Auto-import (req 11.18): a storage setting flipped while a document was closed leaves
+ * its comments behind in the old store. On open we read all three, merge, and move them
+ * into the selected one — in two phases, because the move needs the block list.
+ */
+describe('auto-import', () => {
+  const ids = () => {
+    let n = 0
+    return () => `c${n++}`
+  }
+  const svcFor = (
+    backend: ConstructorParameters<typeof CommentsService>[1],
+    src: () => string,
+    write: (t: string) => void,
+  ) =>
+    new CommentsService(docUri, backend, ids(), () => 't', 1_000_000, src, async (t) => {
+      write(t)
+    })
+
+  it('surfaces comments left in another store and moves them into the current one', async () => {
+    const { io, store } = memIO()
+    let source = `Alpha.\n\nBeta.`
+    const old = svcFor(new SidecarBackend(docUri, io), () => source, (t) => { source = t })
+    await old.load()
+    old.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
+    old.addComment(1, 'note')
+    await old.flush()
+    expect(store.size).toBe(1)
+
+    // The user is now in draft mode; the sidecar was left behind.
+    const svc = svcFor(new DraftBackend(docUri, storageRoot, io), () => source, (t) => { source = t })
+    svc.setImportSources([new SidecarBackend(docUri, io), new InlineAfterBackend()])
+    await svc.load()
+    expect(svc.importedCount).toBe(1)
+
+    const res = svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
+    expect(res.forBlocks).toEqual([{ paragraphIndex: 1, count: 1 }]) // visible before any write
+    await svc.completeImport()
+
+    expect((await new DraftBackend(docUri, storageRoot, io).load('')).threads).toHaveLength(1)
+    expect(store.size).toBe(1) // sidecar gone, draft written
+    expect([...store.keys()][0]).toContain('/global/storage/')
+  })
+
+  it('de-duplicates by comment id when the same comment sits in two stores', async () => {
+    const { io } = memIO()
+    const source = `Alpha.\n\nBeta.`
+    const data: CommentsFile = {
+      version: 1,
+      docHash: '',
+      threads: [
+        {
+          anchor: { quote: 'Beta.', prefix: '', suffix: '', hintLine: 2, quoteHash: '' },
+          orphaned: false,
+          comments: [{ id: 'dup', body: 'note', createdAt: 't', updatedAt: 't' }],
+        },
+      ],
+    }
+    const ctx = { data, source, blocks: [], live: new Map() }
+    await new SidecarBackend(docUri, io).persist(ctx)
+    await new DraftBackend(docUri, storageRoot, io).persist(ctx)
+
+    const svc = svcFor(new DraftBackend(docUri, storageRoot, io), () => source, () => {})
+    svc.setImportSources([new SidecarBackend(docUri, io), new InlineAfterBackend()])
+    await svc.load()
+    expect(svc.importedCount).toBe(0) // already present → nothing to move
+
+    const res = svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
+    expect(res.forBlocks).toEqual([{ paragraphIndex: 1, count: 1 }]) // counted ONCE
+  })
+
+  it('nothing to import ⇒ the document is not touched at all', async () => {
+    const { io } = memIO()
+    let source = `Alpha.\n\nBeta.`
+    const original = source
+    let writes = 0
+    const svc = svcFor(new InlineAfterBackend(), () => source, (t) => { writes++; source = t })
+    svc.setImportSources([new SidecarBackend(docUri, io), new DraftBackend(docUri, storageRoot, io)])
+    await svc.load()
+    svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
+    await svc.completeImport()
+    expect(writes).toBe(0)
+    expect(source).toBe(original)
+  })
+
+  it('moves nothing before the blocks exist — otherwise every carrier lands at EOF', async () => {
+    const { io, store } = memIO()
+    let source = `Alpha.\n\nBeta.`
+    const old = svcFor(new SidecarBackend(docUri, io), () => source, (t) => { source = t })
+    await old.load()
+    old.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
+    old.addComment(1, 'note')
+    await old.flush()
+
+    const svc = svcFor(new InlineAfterBackend(), () => source, (t) => { source = t })
+    svc.setImportSources([new SidecarBackend(docUri, io), new DraftBackend(docUri, storageRoot, io)])
+    await svc.load()
+    await svc.completeImport() // no reanchor yet → must be a no-op
+
+    expect(source).not.toContain('rmt:comments')
+    expect(store.size).toBe(1) // sidecar untouched
+
+    // …and once the blocks are known, the carrier lands after ITS paragraph, not at EOF.
+    svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
+    await svc.completeImport()
+    expect(source).toContain('Beta.\n\n<!-- rmt:comments')
+    expect(store.size).toBe(0)
   })
 })

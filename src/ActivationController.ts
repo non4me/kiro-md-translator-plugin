@@ -215,6 +215,18 @@ export class ActivationController implements IActivationController, vscode.Custo
       : new InlineAfterBackend()
   }
 
+  /** The stores the selected backend must import from — one per OTHER medium (req 11.18).
+   *  Inline is a single medium: an end-of-file carrier is read by the after-paragraph
+   *  backend too, so one inline reader covers both placements. */
+  private otherCommentBackends(docUri: vscode.Uri): CommentBackend[] {
+    const current = this.makeCommentBackend(docUri).medium
+    return [
+      new SidecarBackend(docUri),
+      new InlineAfterBackend(),
+      new DraftBackend(docUri, this.context.globalStorageUri),
+    ].filter((b) => b.medium !== current)
+  }
+
   /** Command: prompt for a provider's API key (masked) and store it in the keychain. */
   private async promptSetApiKey(provider?: ProviderType): Promise<void> {
     const p = provider ?? this.settings.getProviderType()
@@ -332,6 +344,11 @@ export class ActivationController implements IActivationController, vscode.Custo
       // lose comments that exist in neither place.
       () => Promise.resolve(document.save()),
     )
+    // Comments left in a store the user has since switched away from would otherwise look
+    // lost. Read them all, merge, and move them into the selected store (req 11.18).
+    if (this.settings.getCommentAutoImport()) {
+      commentsService.setImportSources(this.otherCommentBackends(document.uri))
+    }
 
     const deps: PreviewDeps = {
       post: (message) => void webview.postMessage(message),
