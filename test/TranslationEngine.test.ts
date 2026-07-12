@@ -120,6 +120,22 @@ describe('TranslationEngine', () => {
     expect(out).toBe('T(Hello world.)')
   })
 
+  it('translateParagraph on a list item that wraps a fence never sends the code', async () => {
+    const seen: string[] = []
+    const { engine } = makeEngine(async (segs) => {
+      seen.push(...segs)
+      return segs.map((s) => `T(${s})`)
+    })
+    const item = '- Here is code:\n\n  ```js\n  fetch(url) // go\n  ```'
+    const out = await engine.translateParagraph(item, 'en', 'de', new AbortController().signal)
+    // The code is never sent — only the prose and the comment text.
+    expect(seen).toEqual(['Here is code:', 'go'])
+    expect(seen.some((s) => s.includes('fetch(url)'))).toBe(false)
+    // The code survives in the (display-only) reassembled output.
+    expect(out).toContain('fetch(url) // T(go)')
+    expect(out).toContain('T(Here is code:)')
+  })
+
   // End-to-end guard over the whole pipeline: every trap in one document. The unit
   // tests pin the scanner; this pins the WIRING (a wrong lang, a missed node type).
   it('a document of nothing but corruption traps keeps every executable line', async () => {

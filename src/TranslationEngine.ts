@@ -32,6 +32,41 @@ interface Unit {
   apply(translated: string[]): void
 }
 
+/** Collect the translatable units of an mdast tree: `text` node values, and the
+ *  prose of comments inside `code` nodes (req 3.22). Shared by the whole-document
+ *  path and the single-block path so both exclude code identically. */
+function collectUnits(mdast: AnyNode): Unit[] {
+  const units: Unit[] = []
+  visit(mdast, (node: AnyNode) => {
+    if (typeof node.value !== 'string') return
+    if (node.type === 'text' && node.value.trim().length > 0) {
+      units.push({
+        segments: [node.value],
+        apply: ([translated]) => {
+          node.value = translated
+        },
+      })
+      return
+    }
+    if (node.type === 'code') {
+      const body = node.value as string
+      const spans = commentSpans(body, node.lang)
+      if (spans.length === 0) return
+      units.push({
+        segments: spans.map((s) => s.text),
+        apply: (translated) => {
+          node.value = spliceComments(body, spans, translated)
+        },
+      })
+    }
+  })
+  return units
+}
+
+/** A line that opens a fenced code block — used to decide whether a single block's
+ *  text hides a code fence (a list item wrapping one), which must NOT be sent whole. */
+const CONTAINS_FENCE = /^[ \t]*(`{3,}|~{3,})/m
+
 /**
  * Orchestrates the translation pipeline: extract translatable segments, cache
  * lookup, a single batched provider call for misses, structure-preserving
@@ -105,6 +140,28 @@ export class TranslationEngine implements ITranslationEngine {
       )
       return text.slice(0, fence.start) + spliceComments(body, spans, translated) + text.slice(fence.end)
     }
+    // A block that merely STARTS with prose can still hide a fenced code block — a
+    // list item wrapping one. Sending it as a single segment would leak the code to
+    // the provider (req 3.7). Route it through the same unit walk instead, which
+    // sends only prose + comment text; the reassembled markdown is display-only
+    // (hover tooltip / edit-modal target field), never written to disk.
+    if (CONTAINS_FENCE.test(text)) {
+      const mdast = this.renderer.parse(text)
+      const units = collectUnits(mdast)
+      if (units.length === 0) return text
+      const translated = await this.translateSegments(
+        units.flatMap((u) => u.segments),
+        sourceLang,
+        targetLang,
+        signal,
+      )
+      let at = 0
+      for (const unit of units) {
+        unit.apply(translated.slice(at, at + unit.segments.length))
+        at += unit.segments.length
+      }
+      return unified().use(remarkGfm).use(remarkStringify).stringify(mdast).trimEnd()
+    }
     const [result] = await this.translateSegments([text], sourceLang, targetLang, signal)
     return result
   }
@@ -135,31 +192,7 @@ export class TranslationEngine implements ITranslationEngine {
     assertNotAborted(signal)
     const mdast = this.renderer.parse(markdown)
 
-    const units: Unit[] = []
-    visit(mdast, (node: AnyNode) => {
-      if (typeof node.value !== 'string') return
-      if (node.type === 'text' && node.value.trim().length > 0) {
-        units.push({
-          segments: [node.value],
-          apply: ([translated]) => {
-            node.value = translated
-          },
-        })
-        return
-      }
-      if (node.type === 'code') {
-        const body = node.value as string
-        const spans = commentSpans(body, node.lang)
-        if (spans.length === 0) return
-        units.push({
-          segments: spans.map((s) => s.text),
-          apply: (translated) => {
-            node.value = spliceComments(body, spans, translated)
-          },
-        })
-      }
-    })
-
+    const units = collectUnits(mdast)
     const flat = units.flatMap((u) => u.segments)
     const translations = await this.translateSegments(flat, sourceLang, targetLang, signal)
     let at = 0
