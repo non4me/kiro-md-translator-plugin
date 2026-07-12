@@ -624,21 +624,20 @@ document.addEventListener('selectionchange', () => {
   if (selectionActive()) hideTooltipNow() // also clears hoveredEl, so a late reply can't reopen it
 })
 
-// --- cursor toolbar (affordance redesign, stage 2) ---------------------------
-// Edit and new-comment appear by the selection instead of in the gutter. `edit`
-// targets the whole home block the selection fell into; `comment` (stage 3) will
-// bind to the trimmed selection — until then it opens the block's comment modal.
-/** The indexed block a non-empty selection sits inside, or undefined. */
-function homeBlockOfSelection(): HTMLElement | undefined {
+// --- cursor toolbar (multi-block selection, req 10.15) -----------------------
+// Edit and new-comment appear by the selection instead of in the gutter. The toolbar
+// shows for a selection of ANY extent — a word through a span across several blocks;
+// its `firstIndex`/`lastIndex` datasets carry the block range the actions operate on.
+/** The indexed blocks a non-empty selection intersects, in document order (empty when
+ *  the selection is collapsed, whitespace-only, or inside a form field). */
+function selectedBlocks(): HTMLElement[] {
   const active = document.activeElement
-  if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) return undefined
+  if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) return []
   const sel = window.getSelection()
-  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return undefined
-  if ((sel.toString() ?? '').trim().length === 0) return undefined
-  const node = sel.getRangeAt(0).commonAncestorContainer
-  const start = node.nodeType === 1 ? (node as Element) : node.parentElement
-  const el = start?.closest<HTMLElement>('[data-paragraph-index]')
-  return el && content.contains(el) ? el : undefined
+  if (!sel || sel.isCollapsed || sel.rangeCount === 0) return []
+  if ((sel.toString() ?? '').trim().length === 0) return []
+  const range = sel.getRangeAt(0)
+  return blocks().filter((b) => range.intersectsNode(b))
 }
 
 function hideSelToolbar(): void {
@@ -646,11 +645,12 @@ function hideSelToolbar(): void {
 }
 
 function positionSelToolbar(): void {
-  const el = homeBlockOfSelection()
-  if (!el) return hideSelToolbar()
+  const sel = selectedBlocks()
+  if (sel.length === 0) return hideSelToolbar()
   const rect = window.getSelection()!.getRangeAt(0).getBoundingClientRect()
   if (rect.width === 0 && rect.height === 0) return hideSelToolbar()
-  selToolbar.dataset.blockIndex = el.dataset.paragraphIndex ?? ''
+  selToolbar.dataset.firstIndex = sel[0].dataset.paragraphIndex ?? ''
+  selToolbar.dataset.lastIndex = sel[sel.length - 1].dataset.paragraphIndex ?? ''
   // Centred just above the selection; clamp to the viewport top so it never clips off-screen.
   selToolbar.style.left = `${rect.left + rect.width / 2}px`
   selToolbar.style.top = `${Math.max(rect.top - 4, 30)}px`
@@ -661,16 +661,17 @@ document.addEventListener('selectionchange', positionSelToolbar)
 // A pointer press inside the toolbar must not collapse the text selection before the click.
 selToolbar.addEventListener('mousedown', (e) => e.preventDefault())
 selEdit.addEventListener('click', () => {
-  const idx = Number(selToolbar.dataset.blockIndex)
+  const idx = Number(selToolbar.dataset.firstIndex)
   hideSelToolbar()
   if (Number.isFinite(idx)) post({ type: 'editParagraph', paragraphIndex: idx })
 })
 selComment.addEventListener('click', () => {
-  const idx = Number(selToolbar.dataset.blockIndex)
-  // Form the fragment BEFORE hiding the toolbar (the selection is still live here —
-  // the toolbar's mousedown preventDefault kept it from collapsing).
-  const el = homeBlockOfSelection()
-  const fragment = el ? fragmentFromSelection(el) : undefined
+  // Read the selection BEFORE hiding the toolbar (it is still live here — the toolbar's
+  // mousedown preventDefault kept it from collapsing).
+  const sel = selectedBlocks()
+  const first = sel[0]
+  const idx = Number(first?.dataset.paragraphIndex)
+  const fragment = first ? fragmentFromSelection(first) : undefined
   hideSelToolbar()
   if (Number.isFinite(idx)) openCommentModal(idx, fragment)
 })
