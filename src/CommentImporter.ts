@@ -119,7 +119,14 @@ export class CommentImporter {
     svc.setImportSources(sources)
     await svc.load()
     if (svc.importedCount === 0) return undefined // already moved since the plan was built
-    svc.reanchor(this.deps.blocksOf(text), text)
+
+    const blocks = this.deps.blocksOf(text)
+    // No anchorable block ⇒ `completeImport` refuses to move anything (it would have to
+    // serialize carriers with no blocks to hang them on). Say so, rather than counting a
+    // move that did not happen — the summary is the only thing the user sees.
+    if (blocks.length === 0) return 'the document has no paragraph to anchor a comment to'
+
+    svc.reanchor(blocks, text)
     await svc.completeImport()
     return writeFailed ? 'the document could not be written' : undefined
   }

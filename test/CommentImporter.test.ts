@@ -160,6 +160,25 @@ describe('CommentImporter', () => {
     expect(texts.get(String(uriA))).toBe('Alpha.\n\nBeta.') // and the file on disk is intact
   })
 
+  it('never counts a move it could not make: a document with no anchorable block is reported, not tallied', async () => {
+    const { io, store } = memIO()
+    const texts = new Map([[String(uriA), '']]) // every paragraph has since been deleted
+    await seedSidecar(io, uriA, 'Beta.', 'c1') // the thread survives, now orphaned
+
+    const deps: ImportDeps = {
+      ...makeDeps(io, texts),
+      listDocuments: async () => [uriA],
+      blocksOf: () => [], // nothing to anchor to
+    }
+    const importer = new CommentImporter(deps)
+    const outcome = await importer.run(await importer.plan(), () => {}, () => false)
+
+    expect(outcome.movedComments).toBe(0) // NOT reported as moved…
+    expect(outcome.movedFiles).toBe(0)
+    expect(outcome.failures[0].reason).toContain('no paragraph')
+    expect(store.size).toBe(1) // …and the sidecar is still there, exactly as claimed
+  })
+
   it('the report says the comments were NOT lost', () => {
     const outcome: ImportOutcome = {
       movedComments: 0,
