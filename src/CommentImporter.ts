@@ -107,7 +107,8 @@ export class CommentImporter {
       undefined, // default flushMs — no comment is added here, so no timer is ever armed
       () => text,
       async (next) => {
-        text = next
+        text = next // an in-memory buffer cannot reject the write; the disk write is below
+        return true
       },
       async () => {
         const ok = await this.deps.writeDocument(item.uri, text)

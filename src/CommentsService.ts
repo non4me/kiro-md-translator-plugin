@@ -42,6 +42,15 @@ export class CommentsService implements ICommentsService {
   private pendingImport: CommentBackend[] = []
   /** How many comments the last `load()` pulled in from other stores. 0 ⇒ nothing to move. */
   importedCount = 0
+  /**
+   * Did the last write-back actually land in the document? A `WorkspaceEdit` can be
+   * REJECTED — it resolves false rather than throwing — and a rejected edit leaves the
+   * document byte-identical and therefore CLEAN. "Clean" is exactly what an already-saved
+   * document looks like, so the disk probe alone cannot tell the two apart: without this
+   * flag, carriers that were never written read as "safely on disk" and the source store
+   * gets cleared out from under them.
+   */
+  private lastWriteLanded = true
 
   constructor(
     docUri: vscode.Uri,
@@ -50,7 +59,10 @@ export class CommentsService implements ICommentsService {
     private readonly now: () => string = () => new Date().toISOString(),
     private readonly flushMs: number = FLUSH_MS,
     private readonly getSource: () => string = () => '',
-    private readonly writeSource?: (text: string) => Promise<void>,
+    /** Write the rewritten source back to the document. Resolves FALSE when the write did
+     *  not land (a `WorkspaceEdit` is REJECTED — not thrown — when the document version
+     *  moved under us). See `lastWriteLanded`. */
+    private readonly writeSource?: (text: string) => Promise<boolean>,
     /** Flush the document to disk. Resolves false when it could not be saved (read-only
      *  file, write error). Absent ⇒ the target is treated as durable — that is only true
      *  for unit tests and sidecar-only setups; the extension always injects it. */
@@ -236,8 +248,9 @@ export class CommentsService implements ICommentsService {
       blocks: this.lastBlocks,
       live: this.live,
     })
+    this.lastWriteLanded = true // nothing to write ⇒ the document already says what we want
     if (res.kind === 'inline' && this.writeSource && res.newSource !== this.getSource()) {
-      await this.writeSource(res.newSource)
+      this.lastWriteLanded = await this.writeSource(res.newSource)
     }
   }
 
@@ -257,18 +270,29 @@ export class CommentsService implements ICommentsService {
    * SAFETY INVARIANT (req 11.16): an inline target only reaches the editor BUFFER —
    * `writeSource` is a WorkspaceEdit, not a save. Clearing the source at that moment
    * leaves the comments in NEITHER place if the buffer is never saved (close-without-
-   * save, undo, crash). So: clear only once the target has reached disk. A failed save
+   * save, undo, crash). So: clear only once the target has reached disk.
+   *
+   * The carriers can fail to reach disk in TWO independent ways, and both must be ruled
+   * out before the source is cleared:
+   *  1. the edit never landed — a WorkspaceEdit is REJECTED (resolves false, does not
+   *     throw) when the document moved under us, leaving it byte-identical and CLEAN;
+   *  2. the save failed — read-only file, write error.
+   * Checking only (2) is a trap: a document that never received the edit is clean, and
+   * "clean" is indistinguishable from "already saved" to the disk probe. Either failure
    * keeps the source intact and the move is simply retried later.
    */
   async migrateFrom(previous: CommentBackend): Promise<void> {
     await this.flush() // writes to the NEW backend (this.backend)
     if (previous.medium === this.backend.medium) return // inline↔inline placement: already re-homed in place
     if (this.backend.medium === 'inline' && this.data.threads.length > 0) {
+      if (!this.lastWriteLanded) return // (1) the carriers never reached the buffer
       const durable = this.saveSource ? await this.saveSource() : true
-      if (!durable) return // target not on disk → the source stays; nothing is lost
+      if (!durable) return // (2) the buffer never reached disk
     }
     const cleared = await previous.clear(this.getSource())
     if (cleared.newSource !== undefined && this.writeSource && cleared.newSource !== this.getSource()) {
+      // Deliberately NOT gated: a failed strip is not a loss. The target already holds the
+      // comments, and the leftover carriers are de-duplicated by comment id on the next open.
       await this.writeSource(cleared.newSource)
       await this.saveSource?.() // finish the move: the stripped document must reach disk too
     }

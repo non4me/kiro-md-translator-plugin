@@ -27,7 +27,7 @@ describe('CommentsService × inline (after-paragraph)', () => {
       () => '2026-07-05T00:00:00Z',
       1_000_000, // large flushMs; we call flush() explicitly
       () => source,
-      async (text) => { source = text },
+      async (text) => { source = text; return true },
     )
     await svc.load() // empty doc → no threads
     const blocks = blocksFrom(['First para.', 'Second para.'])
@@ -48,7 +48,7 @@ describe('CommentsService × inline (after-paragraph)', () => {
     const ids = (() => { let n = 0; return () => `c${n++}` })()
     const svc = new CommentsService(
       docUri, new InlineAfterBackend(), ids, () => '2026-07-05T00:00:00Z', 1_000_000,
-      () => source, async (text) => { source = text },
+      () => source, async (text) => { source = text; return true },
     )
     await svc.load()
     const blocks = blocksFrom(['First para.', 'Second para.'])

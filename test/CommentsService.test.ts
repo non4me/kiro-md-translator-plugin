@@ -242,6 +242,7 @@ describe('auto-import', () => {
   ) =>
     new CommentsService(docUri, backend, ids(), () => 't', 1_000_000, src, async (t) => {
       write(t)
+      return true // the write landed (a rejected WorkspaceEdit would resolve false)
     })
 
   it('surfaces comments left in another store and moves them into the current one', async () => {
@@ -346,7 +347,7 @@ describe('auto-import', () => {
       docUri, new InlineAfterBackend(), (() => { let n = 0; return () => `c${n++}` })(),
       () => 't', 1_000_000,
       () => source,
-      async (t) => { source = t },
+      async (t) => { source = t; return true },
       async () => true, // durable
     )
     svc.setImportSources([new SidecarBackend(docUri, io), new DraftBackend(docUri, storageRoot, io)])

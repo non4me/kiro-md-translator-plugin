@@ -23,7 +23,7 @@ describe('comment migration', () => {
   it('sidecar → inline(after): sidecar removed, carrier written into .md', async () => {
     const { io, store } = memIO()
     let source = `Alpha.\n\nBeta.`
-    const svc = new CommentsService(docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t })
+    const svc = new CommentsService(docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t; return true })
     await svc.load()
     svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
     svc.addComment(1, 'note')
@@ -41,7 +41,7 @@ describe('comment migration', () => {
   it('inline(after) → sidecar: carrier stripped from .md, sidecar written', async () => {
     const { io, store } = memIO()
     let source = `Alpha.\n\nBeta.`
-    const svc = new CommentsService(docUri, new InlineAfterBackend(), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t })
+    const svc = new CommentsService(docUri, new InlineAfterBackend(), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t; return true })
     await svc.load()
     svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
     svc.addComment(1, 'note')
@@ -58,7 +58,7 @@ describe('comment migration', () => {
     const { io, store } = memIO()
     let source = `Alpha.\n\nBeta.`
     const original = source
-    const svc = new CommentsService(docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t })
+    const svc = new CommentsService(docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t; return true })
     await svc.load()
     svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
     // no comments added
@@ -73,7 +73,7 @@ describe('comment migration', () => {
   it('sidecar → inline(eof): sidecar removed, carrier appended at end-of-file', async () => {
     const { io, store } = memIO()
     let source = `Alpha.\n\nBeta.`
-    const svc = new CommentsService(docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t })
+    const svc = new CommentsService(docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t; return true })
     await svc.load()
     svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
     svc.addComment(1, 'note')
@@ -96,7 +96,7 @@ describe('comment migration', () => {
     const { io, store } = memIO()
     let source = `Alpha.\n\nBeta.`
     const original = source
-    const svc = new CommentsService(docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t })
+    const svc = new CommentsService(docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t; return true })
     await svc.load()
     svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
     svc.addComment(1, 'note')
@@ -113,7 +113,7 @@ describe('comment migration', () => {
   it('draft → sidecar: draft removed, sidecar written (materialise the draft)', async () => {
     const { io, store } = memIO()
     let source = `Alpha.\n\nBeta.`
-    const svc = new CommentsService(docUri, new DraftBackend(docUri, storageRoot, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t })
+    const svc = new CommentsService(docUri, new DraftBackend(docUri, storageRoot, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t; return true })
     await svc.load()
     svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
     svc.addComment(1, 'note')
@@ -130,7 +130,7 @@ describe('comment migration', () => {
   it('draft → inline(after): carrier written into .md, draft removed', async () => {
     const { io, store } = memIO()
     let source = `Alpha.\n\nBeta.`
-    const svc = new CommentsService(docUri, new DraftBackend(docUri, storageRoot, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t })
+    const svc = new CommentsService(docUri, new DraftBackend(docUri, storageRoot, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t; return true })
     await svc.load()
     svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
     svc.addComment(1, 'note')
@@ -147,7 +147,7 @@ describe('comment migration', () => {
   it('inline(after) → draft: carrier stripped from .md, draft written', async () => {
     const { io, store } = memIO()
     let source = `Alpha.\n\nBeta.`
-    const svc = new CommentsService(docUri, new InlineAfterBackend(), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t })
+    const svc = new CommentsService(docUri, new InlineAfterBackend(), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t; return true })
     await svc.load()
     svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
     svc.addComment(1, 'note')
@@ -165,7 +165,7 @@ describe('comment migration', () => {
     const { io, store } = memIO()
     let source = `Alpha.\n\nBeta.`
     const original = source
-    const svc = new CommentsService(docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t })
+    const svc = new CommentsService(docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t; return true })
     await svc.load()
     svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
     const prev = svc.currentBackend()
@@ -177,7 +177,7 @@ describe('comment migration', () => {
 
   it('inline(after) → inline(eof): carrier MOVES to EOF, not wiped', async () => {
     let source = `Alpha.\n\nBeta.`
-    const svc = new CommentsService(docUri, new InlineAfterBackend(), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t })
+    const svc = new CommentsService(docUri, new InlineAfterBackend(), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t; return true })
     await svc.load()
     svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
     svc.addComment(1, 'note')
@@ -203,7 +203,7 @@ describe('migration durability', () => {
   const withSave = (io: SidecarIO, src: () => string, set: (t: string) => void, save: () => Promise<boolean>) =>
     new CommentsService(
       docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000,
-      src, async (t) => { set(t) }, save,
+      src, async (t) => { set(t); return true }, save,
     )
 
   it('an inline target that cannot be saved keeps the sidecar', async () => {
@@ -241,6 +241,36 @@ describe('migration durability', () => {
     expect(store.size).toBe(0)
     expect(saves).toBeGreaterThan(0)
     expect(source).toContain('rmt:comments')
+  })
+
+  it('an edit that never LANDED keeps the sidecar, even though the document looks saved', async () => {
+    // The trap this pins: a WorkspaceEdit is REJECTED by resolving false, not by throwing
+    // (the document version moved under us). A rejected edit leaves the document
+    // byte-identical and therefore CLEAN — and "clean" is exactly what an already-saved
+    // document looks like. A durability check that only probes the disk would call this a
+    // success and clear the sidecar for carriers that were never written: comments nowhere.
+    const { io, store } = memIO()
+    let source = `Alpha.\n\nBeta.`
+    const original = source
+    const svc = new CommentsService(
+      docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000,
+      () => source,
+      async () => false, // the edit is REJECTED — the document is untouched…
+      async () => true, // …so it is not dirty, and the disk probe happily says "on disk"
+    )
+    await svc.load()
+    svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
+    svc.addComment(1, 'note')
+    await svc.flush()
+    expect(store.size).toBe(1)
+
+    const prev = svc.currentBackend()
+    svc.setBackend(new InlineAfterBackend())
+    await svc.migrateFrom(prev)
+
+    expect(source).toBe(original) // the carriers really never made it into the document…
+    expect(store.size).toBe(1) // …so the sidecar MUST survive
+    expect(parseCommentsFile([...store.values()][0]).threads).toHaveLength(1)
   })
 
   it('an empty comment set never saves the document', async () => {

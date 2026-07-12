@@ -467,6 +467,17 @@ export class ActivationController implements IActivationController, vscode.Custo
       edit.replace(document.uri, fullRange, newText)
       await vscode.workspace.applyEdit(edit)
     }
+    // The comment layer needs to KNOW whether its write-back landed, which the paragraph-save
+    // closure above throws away. `applyEdit` RESOLVES FALSE (it does not throw) when the
+    // document version moved under us — and a rejected edit leaves the document
+    // byte-identical, hence CLEAN, which is indistinguishable from "already saved" to the
+    // disk probe below. Swallow that boolean and migrateFrom clears the source store for
+    // carriers that were never written: comments in neither place.
+    const writeComments = (newText: string): Promise<boolean> => {
+      const edit = new vscode.WorkspaceEdit()
+      edit.replace(document.uri, new vscode.Range(0, 0, document.lineCount, 0), newText)
+      return Promise.resolve(vscode.workspace.applyEdit(edit))
+    }
     const commentsService = new CommentsService(
       document.uri,
       this.makeCommentBackend(document.uri),
@@ -474,14 +485,12 @@ export class ActivationController implements IActivationController, vscode.Custo
       undefined, // default now
       undefined, // default flushMs
       () => document.getText(),
-      applyEdit,
-      // `applyEdit` only dirties the buffer. migrateFrom's safety invariant needs the
-      // content ON DISK before it may clear the source store — otherwise a
-      // close-without-save would lose comments that exist in neither place.
-      // NB: `save()` resolves FALSE when the document was not dirty, not just when the
-      // save failed. "Already on disk" is a success for us (a second migrate pass, or
-      // files.autoSave having beaten us to it), so the predicate is `!isDirty`, never
-      // the return value alone.
+      writeComments,
+      // The DISK probe. `save()` resolves FALSE when the document was not dirty, not only
+      // when the save failed — and "already on disk" is a success for us (a second migrate
+      // pass, or files.autoSave beating us to it). So ask whether the content is on disk,
+      // never the return value alone. Whether the edit itself landed is a separate question,
+      // answered by `writeComments` above; migrateFrom requires both.
       async () => (await document.save()) || !document.isDirty,
     )
     // Comments left in a store the user has since switched away from would otherwise look
