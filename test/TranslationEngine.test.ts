@@ -120,6 +120,56 @@ describe('TranslationEngine', () => {
     expect(out).toBe('T(Hello world.)')
   })
 
+  // End-to-end guard over the whole pipeline: every trap in one document. The unit
+  // tests pin the scanner; this pins the WIRING (a wrong lang, a missed node type).
+  it('a document of nothing but corruption traps keeps every executable line', async () => {
+    const seen: string[] = []
+    const { engine } = makeEngine(async (segs) => {
+      seen.push(...segs)
+      return segs.map((s) => `[RU]${s}`)
+    })
+    const md = [
+      '```js',
+      "const clean = url.replace(/\\/\\//g, '/') // collapse double slashes",
+      'const api = "https://api.example.com/v1" // the endpoint',
+      '```',
+      '',
+      '```lua',
+      '--[==[ module notes',
+      ']==]',
+      'local s = [[ raw -- not a comment ]]',
+      'print(s) -- show it',
+      '```',
+      '',
+      '```bash',
+      '#!/usr/bin/env bash',
+      'echo "${PATH#/usr}" # strip the prefix',
+      '```',
+    ].join('\n')
+
+    const out = await engine.translateToMarkdown(md, 'en', 'ru', new AbortController().signal)
+
+    for (const seg of seen) {
+      expect(seg).not.toContain('url.replace')
+      expect(seg).not.toContain('api.example.com')
+      expect(seg).not.toContain('PATH#/usr')
+      expect(seg).not.toContain('usr/bin/env')
+    }
+    for (const line of [
+      "const clean = url.replace(/\\/\\//g, '/')",
+      'const api = "https://api.example.com/v1"',
+      'local s = [[ raw -- not a comment ]]',
+      '#!/usr/bin/env bash',
+      'echo "${PATH#/usr}"',
+      '--[==[',
+      ']==]',
+    ]) {
+      expect(out).toContain(line)
+    }
+    expect(seen).toContain('collapse double slashes')
+    expect(seen).toContain('strip the prefix')
+  })
+
   // Feature: kiro-md-translator-plugin, Property 3: Translation cache is a round-trip store
   it('Property 3: identical input is served from cache on the second call', async () => {
     let calls = 0
