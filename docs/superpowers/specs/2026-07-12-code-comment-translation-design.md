@@ -77,6 +77,12 @@ Its invariant, and the new Property 24:
 
 > Splicing a block's own span texts back into it must reproduce the block exactly.
 
+**But that property must not be over-trusted.** It is self-referential — the check uses the
+same spans the scanner produced, so a span that wrongly covers executable code still
+round-trips perfectly. Verified: with the regex-literal and long-bracket guards removed,
+Property 24 stays green while real code is destroyed. The load-bearing test against
+mis-location is the corruption-trap table, not the property.
+
 ### Output guards
 
 Translated text is not trusted. Before a translation is spliced in:
@@ -114,17 +120,35 @@ ordinary block with no special case.
 
 | Family | Line | Block | Notes |
 |---|---|---|---|
-| C-like | `//` | `/* */` | js, ts, java, c, cpp, cs, go, swift, kotlin, scala, php, dart, proto, less, scss |
+| JS-like | `//` | `/* */` | js, ts, jsx, tsx — **plus regex-literal skipping**, see below |
+| C-like | `//` | `/* */` | java, c, cpp, cs, go, swift, kotlin, scala, php, dart, proto, less, scss |
 | Rust | `//` | `/* */` | **no `'` string delimiter** — a lifetime `&'a str` would open a string that never closes |
 | Hash | `#` | — | python, ruby, shell, yaml, toml, perl, r, make, dockerfile, ini, elixir, julia |
 | SQL | `--` | `/* */` | |
-| Lua | `--` | `--[[ ]]` | the block opener is matched **before** the line marker, or `--[[` would be read as a line comment and its opener destroyed |
+| Lua | `--` | `--[=*[ ]=*]` | **long brackets at any level**, for comments *and* strings, matched before the line marker |
 | Haskell | `--` | `{- -}` | |
 | Markup | — | `<!-- -->` | html, xml, svg, vue — **no string delimiters**: an apostrophe in prose (`don't`) would otherwise swallow the rest |
 | CSS | — | `/* */` | **`//` is not a CSS comment** — treating it as one would destroy `url(http://…)` |
 | Lisp | `;` | — | clojure, lisp, scheme, elisp |
 | PowerShell | `#` | `<# #>` | |
 | LaTeX/Erlang | `%` | — | |
+
+Three of these are not stylistic choices — without them the scanner **destroys real code**:
+
+- **JavaScript regex literals.** `url.replace(/\/\//g, '/')` ends its regex with an escaped
+  slash next to the closing slash. Read naively, that `//` starts a comment and the rest of
+  the statement is translated away. So a `/` in a position where an expression may begin is
+  consumed as a regex literal — the classic "regex or division" question, answered from the
+  last significant character. Guessing wrong toward *regex* only costs a missed comment;
+  guessing wrong the other way corrupts. Languages with no regex literal keep the simpler
+  scanner.
+- **Lua long brackets.** A fixed `--[[`/`]]` pair does not match `--[==[`, which then falls
+  through to the `--` line marker: the translation is spliced over the `[==[` opener and the
+  body of the comment becomes live code. The level is read from the opener and the closer
+  derived from it. Long *strings* (`[==[ … ]==]`) need the same treatment, or a `--` inside
+  string data is read as a comment and the translation eats the `]]` terminator.
+- **U+2028 / U+2029.** JavaScript treats these as line terminators, so collapsing only
+  `\r` and `\n` in a translation would still let a line comment leak into code.
 
 Deliberate exclusions, each of which would otherwise corrupt code:
 
