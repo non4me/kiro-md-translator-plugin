@@ -69,7 +69,7 @@ export class ActivationController implements IActivationController, vscode.Custo
     )
     this.secrets = new SecretManager(context.secrets)
     this.ready = this.initApiKey()
-    // Home of the draft comment store (req 11.15). `createDirectory` is recursive and
+    // Home of the draft comment store (req 11.14). `createDirectory` is recursive and
     // idempotent, so this is safe to fire on every activation.
     void vscode.workspace.fs.createDirectory(
       vscode.Uri.joinPath(context.globalStorageUri, 'comments'),
@@ -126,7 +126,7 @@ export class ActivationController implements IActivationController, vscode.Custo
       vscode.commands.registerCommand('kiro-md-translator.saveTranslation', () =>
         this.active?.onWebviewMessage({ type: 'saveTranslation' }),
       ),
-      // Move every project document's comments into the selected storage (req 11.19).
+      // Move every project document's comments into the selected storage (req 11.18).
       // Reachable from the palette and from the action link in the Comments settings.
       vscode.commands.registerCommand('kiro-md-translator.importComments', () =>
         this.importAllComments(),
@@ -213,7 +213,7 @@ export class ActivationController implements IActivationController, vscode.Custo
   /** Select the comment persistence backend from settings (req 11): sidecar by
    *  default; inline end-of-file or after-paragraph when `commentStorage` is
    *  `inline`, per `commentPlacement`; the extension's own storage when `draft`
-   *  (req 11.15 — nothing is written beside the document). */
+   *  (req 11.14 — nothing is written beside the document). */
   private makeCommentBackend(docUri: vscode.Uri): CommentBackend {
     const storage = this.settings.getCommentStorage()
     if (storage === 'draft') return new DraftBackend(docUri, this.context.globalStorageUri)
@@ -223,7 +223,7 @@ export class ActivationController implements IActivationController, vscode.Custo
       : new InlineAfterBackend()
   }
 
-  /** The stores the selected backend must import from — one per OTHER medium (req 11.18).
+  /** The stores the selected backend must import from — one per OTHER medium (req 11.17).
    *  Inline is a single medium: an end-of-file carrier is read by the after-paragraph
    *  backend too, so one inline reader covers both placements. */
   private otherCommentBackends(docUri: vscode.Uri): CommentBackend[] {
@@ -280,7 +280,7 @@ export class ActivationController implements IActivationController, vscode.Custo
     }
   }
 
-  /** Move every project document's comments into the selected storage (req 11.19). */
+  /** Move every project document's comments into the selected storage (req 11.18). */
   private async importAllComments(): Promise<void> {
     const root = vscode.workspace.workspaceFolders?.[0]
     if (!root) {
@@ -477,7 +477,7 @@ export class ActivationController implements IActivationController, vscode.Custo
       () => Promise.resolve(document.save()),
     )
     // Comments left in a store the user has since switched away from would otherwise look
-    // lost. Read them all, merge, and move them into the selected store (req 11.18).
+    // lost. Read them all, merge, and move them into the selected store (req 11.17).
     if (this.settings.getCommentAutoImport()) {
       commentsService.setImportSources(this.otherCommentBackends(document.uri))
     }

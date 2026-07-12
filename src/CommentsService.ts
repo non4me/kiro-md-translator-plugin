@@ -58,7 +58,7 @@ export class CommentsService implements ICommentsService {
   ) {}
 
   /**
-   * Phase 1 of auto-import (req 11.18): read the current store, then merge whatever the
+   * Phase 1 of auto-import (req 11.17): read the current store, then merge whatever the
    * OTHER stores still hold — a storage setting flipped while this document was closed
    * leaves its comments behind, and reading only the selected store makes them look lost.
    * Read-only: the move itself is `completeImport`, which needs the block list.
@@ -254,7 +254,7 @@ export class CommentsService implements ICommentsService {
    * flush already stripped the old carriers and rewrote them in place, so clearing
    * would wipe what we just wrote. Thread ids are stable, so nothing is lost.
    *
-   * SAFETY INVARIANT (req 11.17): an inline target only reaches the editor BUFFER —
+   * SAFETY INVARIANT (req 11.16): an inline target only reaches the editor BUFFER —
    * `writeSource` is a WorkspaceEdit, not a save. Clearing the source at that moment
    * leaves the comments in NEITHER place if the buffer is never saved (close-without-
    * save, undo, crash). So: clear only once the target has reached disk. A failed save

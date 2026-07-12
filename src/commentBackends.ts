@@ -104,7 +104,7 @@ function ownedBy(raw: string, key: string): boolean {
 }
 
 /**
- * Comments in the extension's own storage (req 11.15): nothing is written beside the
+ * Comments in the extension's own storage (req 11.14): nothing is written beside the
  * document and the `.md` is never modified — the only backend that works on a document you
  * cannot write to. Drafts do NOT travel with the file; that is the mode, not a gap.
  */

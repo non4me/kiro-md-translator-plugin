@@ -169,5 +169,8 @@ Each lands as its own commit with its own tests, so a regression can be attribut
 
 ## Spec chain (project convention)
 
+Shipped as req **11.14–11.18** in `requirements.md`, **Property 23** in `design.md`, and
+task **28** in `tasks.md`.
+
 New EARS ids extend req 11 in `requirements.md`; a `Validates:` Property in
 `design.md`; matching tasks in `tasks.md` — updated together with the code.

@@ -305,7 +305,7 @@ export class PreviewController implements IPreviewController {
       const res = svc.reanchor(this.currentBlocks(), this.sourceText)
       this.deps.post({ type: 'commentsForBlocks', blocks: res.forBlocks })
       this.deps.post({ type: 'orphanedComments', threads: res.orphaned })
-      // Phase 2 of auto-import (req 11.18): the blocks exist now, so what `load` merged
+      // Phase 2 of auto-import (req 11.17): the blocks exist now, so what `load` merged
       // from the other stores can be moved into the selected one. Self-guarding no-op
       // unless something was actually imported.
       void svc.completeImport?.()

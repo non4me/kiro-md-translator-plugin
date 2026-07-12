@@ -1,5 +1,5 @@
 /**
- * Project-wide comment import (req 11.19): move every document's comments into the storage
+ * Project-wide comment import (req 11.18): move every document's comments into the storage
  * the user currently has selected. Two passes — `plan()` finds the work, `run()` does it —
  * so the confirmation can quote real numbers and the expensive pass only touches documents
  * that need it. The document text is re-read at write time, in case it changed in between.

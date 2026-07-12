@@ -169,7 +169,7 @@ function ownedBy(raw: string, key: string): boolean {
 }
 
 /**
- * Comments in the extension's own storage (req 11.15): nothing is written next to the
+ * Comments in the extension's own storage (req 11.14): nothing is written next to the
  * document and the `.md` is never modified — the only backend that works on a document
  * you cannot write to. Drafts do NOT travel with the file; that is the mode, not a gap.
  */
@@ -1103,7 +1103,7 @@ Expected: FAIL — the module does not exist.
 
 ```ts
 /**
- * Project-wide comment import (req 11.17): move every document's comments into the
+ * Project-wide comment import (req 11.16): move every document's comments into the
  * storage the user currently has selected. Two passes — `plan()` finds the work,
  * `run()` does it — so the confirmation can quote real numbers and the expensive pass
  * only touches documents that actually need it. The document text is re-read at write
@@ -1344,7 +1344,7 @@ Add the methods:
     }
   }
 
-  /** Move every project document's comments into the selected storage (req 11.17). */
+  /** Move every project document's comments into the selected storage (req 11.16). */
   private async importAllComments(): Promise<void> {
     const root = vscode.workspace.workspaceFolders?.[0]
     if (!root) {
@@ -1429,17 +1429,17 @@ git push
 - [ ] **Step 1: Add the EARS acceptance criteria under req 11**
 
 ```
-11.15 WHEN Comment Storage is `draft` THEN the extension SHALL persist comments in its own
+11.14 WHEN Comment Storage is `draft` THEN the extension SHALL persist comments in its own
       storage and SHALL NOT modify the Markdown document or create any file beside it.
-11.16 WHEN a draft record's embedded document URI does not match the document being opened
+11.15 WHEN a draft record's embedded document URI does not match the document being opened
       THEN the extension SHALL treat the record as absent (a hash collision is a miss, never
       another document's comments).
-11.17 WHEN a comment is moved between storages THEN the extension SHALL NOT clear the source
+11.16 WHEN a comment is moved between storages THEN the extension SHALL NOT clear the source
       store until the target store has reached disk; for `inline` targets this means the
       document was saved.
-11.18 WHEN a document is opened AND Comment Auto Import is enabled THEN the extension SHALL
+11.17 WHEN a document is opened AND Comment Auto Import is enabled THEN the extension SHALL
       merge comments found in the other storages and SHALL move them into the selected one.
-11.19 WHEN the user runs Import Comments THEN the extension SHALL move every project
+11.18 WHEN the user runs Import Comments THEN the extension SHALL move every project
       document's comments into the selected storage, SHALL report how many moved, and SHALL
       write a failure report to the project root if and only if something failed.
 ```
@@ -1450,10 +1450,10 @@ git push
 P22 — Storage moves are lossless. For every ordered pair of storage media, moving comments
       leaves them readable in the target with their ids intact, removes them from the source,
       and — when the target write cannot reach disk — leaves the source untouched.
-      Validates: 11.15, 11.16, 11.17, 11.18, 11.19
+      Validates: 11.14, 11.15, 11.16, 11.17, 11.18
 ```
 
-- [ ] **Step 3: Add the tasks to `tasks.md`** with `_Requirements: 11.15–11.19_` footers, mirroring Changes 1–4.
+- [ ] **Step 3: Add the tasks to `tasks.md`** with `_Requirements: 11.14–11.18_` footers, mirroring Changes 1–4.
 
 - [ ] **Step 4: Commit**
 
