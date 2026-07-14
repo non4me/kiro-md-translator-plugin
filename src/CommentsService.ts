@@ -181,10 +181,13 @@ export class CommentsService implements ICommentsService {
       }
       // A fragment thread needs the fragment itself to still exist in the matched block,
       // not just the block — otherwise it is orphaned (never re-pinned to the whole block).
+      // A `translated` fragment is the exception: its quote is display text, never a substring of
+      // the source, so it anchors at block level (like a span) and the source-side check is skipped.
       const block = idx === undefined ? undefined : blocks.find((b) => b.paragraphIndex === idx)
       const fragmentGone =
         block !== undefined &&
         thread.anchor.fragment !== undefined &&
+        !thread.anchor.fragment.translated &&
         locateFragment(thread.anchor.fragment, block.text) === undefined
       if (idx === undefined || fragmentGone) {
         thread.orphaned = true

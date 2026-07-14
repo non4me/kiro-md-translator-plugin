@@ -93,6 +93,15 @@ export interface FragmentAnchor {
   quote: string
   prefix: string
   suffix: string
+  /**
+   * The `quote` is display (target-language) text, captured while the translated preview was
+   * shown — so it is NOT a substring of the storage-language source. Re-anchoring therefore
+   * resolves such a fragment at BLOCK level (like a multi-block span) instead of orphaning it on
+   * a source-side `locateFragment` miss; the webview painter still finds the quote in the live
+   * (translated) DOM. Absent/false ⇒ a source-language fragment, matched strictly against the
+   * source, so a genuinely deleted fragment still orphans (req 11.9).
+   */
+  translated?: boolean
 }
 
 /**

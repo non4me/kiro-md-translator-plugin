@@ -744,13 +744,20 @@ selComment.addEventListener('click', () => {
 function fragmentFromText(blockEl: HTMLElement, rawText: string): FragmentAnchor | undefined {
   const trimmed: Fragment | undefined = trimFragment(rawText)
   if (!trimmed) return undefined
+  // The quote is display (target-language) text when captured over a translated view — the
+  // single-mode translation, or the right (translation) column of the bilingual grid. Such a quote
+  // is not a substring of the storage-language source, so flag it: the host then anchors the
+  // fragment at block level instead of orphaning it (see FragmentAnchor.translated).
+  const translated = bilingual ? blockEl.closest('.bcell-r') !== null : displaying === 'translation'
+  const flag = translated ? { translated: true } : undefined
   const blockText = blockEl.textContent ?? ''
   const at = blockText.indexOf(trimmed.text)
-  if (at < 0) return { quote: trimmed.text, prefix: '', suffix: '' }
+  if (at < 0) return { quote: trimmed.text, prefix: '', suffix: '', ...flag }
   return {
     quote: trimmed.text,
     prefix: blockText.slice(Math.max(0, at - 24), at),
     suffix: blockText.slice(at + trimmed.text.length, at + trimmed.text.length + 24),
+    ...flag,
   }
 }
 

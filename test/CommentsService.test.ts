@@ -449,6 +449,20 @@ describe('fragment comments (stage 3)', () => {
     const res = s2.reanchor(blocksFrom([text]), text)
     expect(res.forBlocks.find((b) => b.paragraphIndex === 0)?.count).toBe(1)
   })
+
+  it('a fragment captured over the TRANSLATION does not orphan when its quote is absent from the source', () => {
+    // Regression: FragmentAnchor.quote is built from RENDERED text. With the translated preview
+    // shown, that quote is in the target language and is NOT a substring of the storage-language
+    // source, so a source-side locateFragment miss must not orphan it — it anchors at block level,
+    // exactly as the multi-block span does. The `translated` flag records that the quote is display
+    // text, so this stays distinct from a genuinely deleted source fragment (which still orphans).
+    const s = svc(memIO().io)
+    s.reanchor(blocksFrom([text]), text) // English (storage-language) source
+    s.addComment(0, 'why a fox?', { quote: 'быстрая лиса', prefix: '', suffix: '', translated: true })
+    const res = s.reanchor(blocksFrom([text]), text)
+    expect(res.orphaned).toEqual([]) // NOT orphaned — survives at block level
+    expect(res.forBlocks.find((b) => b.paragraphIndex === 0)?.count).toBe(1) // marker on the block
+  })
 })
 
 describe('multi-block span comments (stage 4)', () => {
