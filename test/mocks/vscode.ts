@@ -109,6 +109,22 @@ export const workspace = {
     has(key: string): boolean {
       return configStore.has(`${section}.${key}`)
     },
+    inspect<T>(key: string): {
+      key: string
+      defaultValue?: T
+      globalValue?: T
+      workspaceValue?: T
+      workspaceFolderValue?: T
+    } {
+      const k = `${section}.${key}`
+      return {
+        key: k,
+        defaultValue: undefined,
+        globalValue: configStore.has(k) ? (configStore.get(k) as T) : undefined,
+        workspaceValue: undefined,
+        workspaceFolderValue: undefined,
+      }
+    },
   }),
   onDidChangeConfiguration: (_listener: (e: unknown) => void): Disposable =>
     new Disposable(() => {}),
@@ -117,6 +133,20 @@ export const workspace = {
   workspaceFolders: [] as unknown[],
   fs: {
     writeFile: async (_uri: unknown, _content: Uint8Array): Promise<void> => {},
+  },
+}
+
+/** Backing value for env.appName; tests can seed via __setAppName. */
+let appName = 'Test Host'
+
+/** Test seam: script vscode.env.appName (e.g. 'Visual Studio Code' vs 'Kiro'). */
+export function __setAppName(name: string): void {
+  appName = name
+}
+
+export const env = {
+  get appName(): string {
+    return appName
   },
 }
 
@@ -195,6 +225,7 @@ export default {
   Range,
   Uri,
   workspace,
+  env,
   window,
   commands,
   l10n,

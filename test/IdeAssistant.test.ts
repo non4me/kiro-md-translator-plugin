@@ -27,11 +27,11 @@ describe('IdeAssistant', () => {
     expect(out.join('')).toBe('Hi there')
   })
 
-  it('throws the Copilot-not-found message when no model is available (req 17.3)', async () => {
+  it('throws an actionable Copilot-unavailable message when no model is available (req 17.3)', async () => {
     __setLmModels([])
     const p = new IdeAssistant('vscode-copilot', undefined)
     await expect(p.testConnection()).rejects.toThrow(
-      'GitHub Copilot not found. Please install and authenticate the GitHub Copilot extension',
+      'GitHub Copilot models are unavailable. Make sure GitHub Copilot is installed and signed in, then run "Markdown Translator: Test AI Assistant Connection" once (or reload the window) to authorize access.',
     )
   })
 })

@@ -20,7 +20,9 @@ export class IdeAssistant implements IAssistantProvider {
     if (!models.length) {
       throw new TranslatorError(
         'INVALID_ENDPOINT_URL',
-        t('GitHub Copilot not found. Please install and authenticate the GitHub Copilot extension'),
+        t(
+          'GitHub Copilot models are unavailable. Make sure GitHub Copilot is installed and signed in, then run "Markdown Translator: Test AI Assistant Connection" once (or reload the window) to authorize access.',
+        ),
       )
     }
     return models[0]

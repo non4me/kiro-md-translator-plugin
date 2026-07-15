@@ -74,12 +74,28 @@ export class SettingsManager implements ISettingsManager {
     const c = this.cfg()
     return {
       enabled: c.get<boolean>('aiAssistant.enabled', false),
-      provider: c.get<AssistantProviderType>('aiAssistant.provider', 'ollama'),
+      provider: this.getAiAssistantProvider(c),
       model: c.get<string>('aiAssistant.model', '') || '',
       endpoint: c.get<string>('aiAssistant.endpoint', 'http://localhost:11434') || 'http://localhost:11434',
       systemPrompt: c.get<string>('aiAssistant.systemPrompt', '') || '',
       reuseTranslationProvider: c.get<boolean>('aiAssistant.reuseTranslationProvider', true),
     }
+  }
+
+  /**
+   * Resolves the effective AI Assistant provider. An explicit user/workspace/folder
+   * value (per `.inspect()`) always wins. With no explicit value, the default is
+   * host-aware: real VS Code (which alone exposes `vscode.lm` Copilot models) gets
+   * `vscode-copilot`; every other host (Kiro, Cursor, VSCodium, ...) falls back to
+   * `ollama`, since the package.json static default is only a "no explicit value"
+   * sentinel and is overridden here at read time.
+   */
+  private getAiAssistantProvider(c: vscode.WorkspaceConfiguration): AssistantProviderType {
+    const inspected = c.inspect<AssistantProviderType>('aiAssistant.provider')
+    const explicit = inspected?.workspaceFolderValue ?? inspected?.workspaceValue ?? inspected?.globalValue
+    if (explicit) return explicit
+    const isVsCode = /visual studio code/i.test(vscode.env.appName ?? '')
+    return isVsCode ? 'vscode-copilot' : 'ollama'
   }
 
   /** Do-not-translate terms (req 3.18). Blank/whitespace entries are dropped. */
