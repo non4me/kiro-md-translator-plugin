@@ -39,4 +39,84 @@ describe('AssistantSession', () => {
     expect(posts.find((p) => p.type === 'assistantReply').canApply).toBe(false)
     expect(s.lastEdit()).toBeUndefined()
   })
+
+  // Finding I-1: a cancelled turn must stay silent — no assistantError, no partial
+  // history — instead of cross-talking a stale error into a re-opened dialog. Real
+  // providers (fetch's `reader.read()`, IdeAssistant's CancellationTokenSource) THROW
+  // on abort rather than returning cleanly, so the fake here must too or the test
+  // gives false confidence (a clean-return fake never exercises the catch block).
+  function abortingProvider(): IAssistantProvider {
+    return {
+      id: 'ollama', displayName: 'x',
+      async *chat(_messages, signal): AsyncIterable<string> {
+        yield 'partial '
+        await new Promise<void>((resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            const err = new Error('The operation was aborted')
+            err.name = 'AbortError'
+            reject(err)
+          })
+        })
+      },
+      async testConnection() {},
+    }
+  }
+
+  /** First call blocks until aborted (throws AbortError, like `abortingProvider`);
+   *  every later call resolves normally — models a superseding second turn. */
+  function abortThenSucceedProvider(reply: string): IAssistantProvider {
+    let calls = 0
+    return {
+      id: 'ollama', displayName: 'x',
+      async *chat(_messages, signal): AsyncIterable<string> {
+        calls += 1
+        if (calls === 1) {
+          yield 'partial '
+          await new Promise<void>((resolve, reject) => {
+            signal.addEventListener('abort', () => {
+              const err = new Error('The operation was aborted')
+              err.name = 'AbortError'
+              reject(err)
+            })
+          })
+          return
+        }
+        yield reply
+      },
+      async testConnection() {},
+    }
+  }
+
+  it('cancel() during a still-streaming ask() posts no assistantError (I-1)', async () => {
+    const posts: any[] = []
+    const s = new AssistantSession({
+      provider: abortingProvider(),
+      initial: [{ role: 'system', content: 'S' }],
+      post: (m) => posts.push(m),
+      renderMarkdown: async (md) => md,
+    })
+    const pending = s.ask('why?')
+    await new Promise((r) => setTimeout(r, 0)) // let the first chunk land, then cancel mid-stream
+    s.cancel()
+    await pending
+    expect(posts.some((p) => p.type === 'assistantError')).toBe(false)
+    expect(posts.some((p) => p.type === 'assistantReply')).toBe(false)
+  })
+
+  it('a superseding ask() aborts the prior turn without posting assistantError for it (I-1)', async () => {
+    const posts: any[] = []
+    const s = new AssistantSession({
+      provider: abortThenSucceedProvider('Second reply.'),
+      initial: [{ role: 'system', content: 'S' }],
+      post: (m) => posts.push(m),
+      renderMarkdown: async (md) => md,
+    })
+    const first = s.ask('first?')
+    await new Promise((r) => setTimeout(r, 0))
+    const second = s.ask('second?') // supersedes the first turn, aborting it
+    await Promise.all([first, second])
+    expect(posts.some((p) => p.type === 'assistantError')).toBe(false)
+    expect(posts.filter((p) => p.type === 'assistantReply')).toHaveLength(1)
+    expect(posts.find((p) => p.type === 'assistantReply').html).toBe('Second reply.')
+  })
 })

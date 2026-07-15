@@ -137,6 +137,43 @@ describe('PreviewController — AI Assistant', () => {
     expect(lateChunk).toBe(false)
   })
 
+  it('M-1: a failed re-open leaves no stale session — a later askAiSend does not drive it', async () => {
+    const post = vi.fn()
+    const chatCalls: string[] = []
+    const firstProvider: IAssistantProvider = {
+      id: 'ollama',
+      displayName: 'x',
+      async *chat(messages) { chatCalls.push('first'); yield 'first reply' },
+      async testConnection() {},
+    }
+    let opens = 0
+    const c = new PreviewController(deps({
+      post,
+      buildAssistantProvider: () => {
+        opens += 1
+        if (opens === 1) return firstProvider
+        throw new TranslatorError('INVALID_ENDPOINT_URL', 'API key required for OpenAI')
+      },
+    }))
+    c.primeRenderState('Block one source.\n\nBlock two.', [{ paragraphIndex: 0, startLine: 0, endLine: 0 }], false)
+
+    // First open succeeds and binds a session to selection "Block one".
+    c.onWebviewMessage({ type: 'askAiOpen', paragraphIndex: 0, selection: 'Block one', translated: false } as never)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(post.mock.calls.some((call) => call[0].type === 'assistantOpen')).toBe(true)
+
+    // Re-open for a new selection fails to build a provider — the old session must not survive.
+    post.mockClear()
+    c.onWebviewMessage({ type: 'askAiOpen', paragraphIndex: 0, selection: 'Block two', translated: false } as never)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(post.mock.calls.some((call) => call[0].type === 'assistantError')).toBe(true)
+
+    // A later send must not revive the stale (cancelled) first session.
+    c.onWebviewMessage({ type: 'askAiSend', text: 'hi' } as never)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(chatCalls).toEqual([])
+  })
+
   // --- req 17: error-message wording (routed through t()) -----------------
 
   const openAndError = (post: ReturnType<typeof vi.fn>): string | undefined => {

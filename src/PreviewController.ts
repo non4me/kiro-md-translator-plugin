@@ -331,6 +331,11 @@ export class PreviewController implements IPreviewController {
     // A prior session may still be streaming (chunks/reply in flight); re-opening the
     // dialog must not let its late messages cross-talk into the freshly-opened one.
     this.assistant?.cancel()
+    // Drop it now, not just on the success path below: every early return past this point
+    // must leave no stale session, or a later `askAiSend` would revive the cancelled
+    // session bound to the PREVIOUS selection's context while `assistantSel` already
+    // points at the new one.
+    this.assistant = undefined
     if (!this.deps.aiAssistant?.().enabled) return
     const first = m.paragraphIndex
     const last = m.lastIndex ?? first
