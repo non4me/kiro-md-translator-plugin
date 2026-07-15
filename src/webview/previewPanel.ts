@@ -674,6 +674,7 @@ function openAssistantModal(): void {
   assistantError.textContent = ''
   assistantInput.value = ''
   assistantApply.hidden = true
+  assistantSummary.disabled = true // enabled once the assistant produces its first reply
   aiStreamBubble = undefined
   assistantModal.hidden = false
 }
@@ -1122,6 +1123,7 @@ window.addEventListener('message', (event: MessageEvent) => {
       const bubble = aiStreamBubble ?? appendChatBubble('ai', '')
       setSanitizedHtml(bubble, String(msg.html)) // host-sanitized (req 5)
       aiStreamBubble = undefined
+      assistantSummary.disabled = false // at least one reply exists → summary is meaningful
       assistantApply.hidden = !msg.canApply
       assistantLog.scrollTop = assistantLog.scrollHeight
       break

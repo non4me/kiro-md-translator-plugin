@@ -264,10 +264,10 @@ export function getPreviewHtml(
       <div id="assistant-log" aria-live="polite"></div>
       <div id="assistant-error" role="alert"></div>
       <textarea id="assistant-input" rows="2" placeholder="Ask about the selection…"></textarea>
-      <div style="display:flex; gap:.5rem; justify-content:flex-end;">
+      <div style="display:flex; gap:.5rem; justify-content:flex-end; align-items:center;">
+        <button id="assistant-summary" disabled style="margin-right:auto;" title="Available after the assistant replies">Save Summary</button>
         <button id="assistant-send">Send</button>
         <button id="assistant-apply" hidden>Apply Changes</button>
-        <button id="assistant-summary">Save Summary</button>
         <button id="assistant-close">Close</button>
       </div>
     </div>
