@@ -81,8 +81,16 @@ export class MemSecretStorage {
 
 /** Backing store for getConfiguration; tests can seed via __setConfig. */
 const configStore = new Map<string, unknown>()
-export function __setConfig(section: string, key: string, value: unknown): void {
-  configStore.set(`${section}.${key}`, value)
+export function __setConfig(section: string, key: string, value: unknown): void
+export function __setConfig(section: string, values: Record<string, unknown>): void
+export function __setConfig(section: string, keyOrValues: string | Record<string, unknown>, value?: unknown): void {
+  if (typeof keyOrValues === 'string') {
+    configStore.set(`${section}.${keyOrValues}`, value)
+    return
+  }
+  for (const [key, val] of Object.entries(keyOrValues)) {
+    configStore.set(`${section}.${key}`, val)
+  }
 }
 export function __clearConfig(): void {
   configStore.clear()

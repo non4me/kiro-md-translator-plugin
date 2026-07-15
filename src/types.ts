@@ -1,4 +1,5 @@
 import type * as vscode from 'vscode'
+import type { AiAssistantConfig } from './assistant/types'
 
 /** BCP-47 language tag, e.g. "en", "ru", "zh". */
 export type LanguageCode = string
@@ -371,6 +372,8 @@ export interface ISettingsManager {
   getCommentsEnabled(): boolean
   /** Code-block syntax highlighting theme (req 12). Default 'auto'. */
   getCodeHighlightTheme(): CodeHighlightTheme
+  /** AI Assistant Chat configuration (req 1). */
+  getAiAssistantConfig(): AiAssistantConfig
   /** Append a do-not-translate term to the Glossary setting (req 3.19). Resolves
    *  to true if it was added, false if blank or already present. */
   addGlossaryTerm(term: string): Promise<boolean>

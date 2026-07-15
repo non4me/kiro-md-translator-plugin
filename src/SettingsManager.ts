@@ -9,6 +9,7 @@ import type {
   ProviderType,
   TranslationMode,
 } from './types'
+import type { AiAssistantConfig, AssistantProviderType } from './assistant/types'
 
 const SECTION = 'kiro-md-translator'
 
@@ -67,6 +68,18 @@ export class SettingsManager implements ISettingsManager {
 
   getCodeHighlightTheme(): CodeHighlightTheme {
     return this.cfg().get<CodeHighlightTheme>('codeHighlightTheme', 'auto')
+  }
+
+  getAiAssistantConfig(): AiAssistantConfig {
+    const c = this.cfg()
+    return {
+      enabled: c.get<boolean>('aiAssistant.enabled', false),
+      provider: c.get<AssistantProviderType>('aiAssistant.provider', 'ollama'),
+      model: c.get<string>('aiAssistant.model', '') || '',
+      endpoint: c.get<string>('aiAssistant.endpoint', 'http://localhost:11434') || 'http://localhost:11434',
+      systemPrompt: c.get<string>('aiAssistant.systemPrompt', '') || '',
+      reuseTranslationProvider: c.get<boolean>('aiAssistant.reuseTranslationProvider', true),
+    }
   }
 
   /** Do-not-translate terms (req 3.18). Blank/whitespace entries are dropped. */
