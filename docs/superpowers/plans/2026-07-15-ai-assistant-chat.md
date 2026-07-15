@@ -10,6 +10,8 @@
 
 **Reference design:** `docs/superpowers/specs/2026-07-15-ai-assistant-chat-design.md`. Spec id chain: `.kiro/specs/ai-assistant-chat/requirements.md` Requirements 1–17.
 
+> **Post-implementation update (2026-07-16):** the `kiro-ide` provider named throughout this plan was **removed**. The `vscode.lm` spike proved Kiro registers no models into `vscode.lm` and exposes no in-process model API to extensions (only the out-of-process Kiro CLI ACP, judged not worthwhile), so `kiro-ide` is not implementable as planned. The IDE provider shipped as **`vscode-copilot` only** — constrained to the `copilot` vendor, default family `claude-sonnet-4.5` with a fallback to any Copilot model. **Ignore every `kiro-ide` reference below:** wherever a task lists `['vscode-copilot', 'kiro-ide']`, a `kiro-ide` provider case, or the `id === 'kiro-ide'` branches, the shipped code has `vscode-copilot` alone. Requirements 14 and 17.4 are intentionally unimplemented. In VS Code the default provider is `vscode-copilot`; in Kiro it is `ollama`.
+
 ## Global Constraints
 
 - **No self-attribution** in commits, code comments, or docs (no `Co-Authored-By: Claude`, no "Generated with"). Commits authored solely by `non4me`.
@@ -30,7 +32,7 @@ These names are referenced by every task. Definitions land in Task 1.
 ```ts
 // src/assistant/types.ts
 export type AssistantProviderType =
-  | 'ollama' | 'openai' | 'anthropic' | 'google' | 'vscode-copilot' | 'kiro-ide'
+  | 'ollama' | 'openai' | 'anthropic' | 'google' | 'vscode-copilot' // 'kiro-ide' dropped — see the update note above
 
 export interface AssistantMessage {
   role: 'system' | 'user' | 'assistant'
@@ -58,7 +60,7 @@ export interface IAssistantProvider {
 /** Providers that authenticate with a keychain key (req 1.4). */
 export const KEYED_ASSISTANT_PROVIDERS: AssistantProviderType[] = ['openai', 'anthropic', 'google']
 /** Providers that need no key or endpoint (req 1.6). */
-export const KEYLESS_IDE_PROVIDERS: AssistantProviderType[] = ['vscode-copilot', 'kiro-ide']
+export const KEYLESS_IDE_PROVIDERS: AssistantProviderType[] = ['vscode-copilot'] // 'kiro-ide' dropped — see the update note above
 ```
 
 ---

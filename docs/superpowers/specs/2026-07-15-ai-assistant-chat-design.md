@@ -145,26 +145,29 @@ at dialog open and re-resolved at save time, so a re-render during a long conver
 cannot land the summary on the wrong block. On success the dialog closes; on failure
 it stays open with an error.
 
-## The IDE-model provider (parameterized on the spike)
+## The IDE-model provider (resolved: VS Code Copilot only)
 
-Requirements 13 (VS Code Copilot) and 14 (Kiro IDE) both ask for "the editor's own
-model with no configuration". Whether they are one provider or two depends on a fact
-we will establish with a 15-line spike before implementing this stage: does Kiro
-surface its models through the standard `vscode.lm.selectChatModels` API?
+> **Post-implementation update (2026-07-16):** the spike below was run for real, in both
+> IDEs. Kiro implements the `vscode.lm` API surface but registers **zero** models into it
+> (`selectChatModels({})` → 0 for every vendor, incl. `copilot`), so an extension running
+> inside Kiro cannot reach Kiro's agent through `vscode.lm`. Kiro's only documented
+> programmatic model access is the Kiro CLI's ACP protocol (`kiro-cli acp`, JSON-RPC over
+> stdio) — a separate, out-of-process integration requiring a separate `kiro-cli` install,
+> judged not worthwhile. **`kiro-ide` was therefore dropped.** The IDE provider ships as
+> `vscode-copilot` only, verified working in real VS Code (277 models available;
+> constrained to the `copilot` vendor; default family `claude-sonnet-4.5` with a fallback
+> to any Copilot model). Requirements 14 and 17.4 are intentionally not implemented — no
+> public in-process API exists to satisfy them.
 
-- **If yes** — the two requirements collapse into a single "IDE model" provider. The
-  same code path serves Copilot under VS Code and Kiro's model under Kiro, chosen by
-  whatever the API returns; there is no Kiro-specific code. This is the preferred
-  outcome.
-- **If no** — `vscode-copilot` remains a `vscode.lm` provider available under VS Code,
-  and `kiro-ide` becomes either a thin adapter over whatever native API the spike
-  finds, or (if none exists) a provider that reports itself unavailable outside Kiro
-  with the spec's message (req 17.4). The HTTP providers do not depend on this and
-  ship regardless.
-
-Either way, `vscode.lm` requires raising the manifest engine floor from `^1.85` to
-`^1.90`. That bump ships only with the IDE-provider stage, so the HTTP-only providers
-remain installable on the current floor until then.
+Requirement 13 (VS Code Copilot) asks for "the editor's own model with no
+configuration". The provider calls `vscode.lm.selectChatModels({ vendor: 'copilot' })`
+and streams `model.sendRequest`. `vscode.lm` requires raising the manifest engine floor
+from `^1.85` to `^1.90`; that bump ships with this stage, so the HTTP-only providers
+remain installable on the current floor until then. Note that `vscode.lm` gates model
+access on a user-initiated action, so the first Copilot turn triggered from the webview
+can return empty until consent is granted (run the Test Connection command / reload the
+window once); the empty result is surfaced as an actionable message, not a false
+"Copilot not found".
 
 ## Context budget and degradation (Requirement 5.2)
 
@@ -188,8 +191,12 @@ large-file awareness (it already warns past 1 MB).
   literal design silently overwrites a block and misfires on quoted code. Req 7.2/7.3
   (edit the storage-language source via the existing edit infrastructure) are met
   exactly.
-- **Req 13 / 14** — unified (or split) per the `vscode.lm` spike rather than assuming
-  a Kiro-specific API that may not exist as public surface.
+- **Req 13** — implemented as `vscode-copilot` via `vscode.lm` (vendor `copilot`,
+  default family `claude-sonnet-4.5`). **Req 14 (`kiro-ide`) dropped:** the spike proved
+  Kiro registers no `vscode.lm` models and exposes no in-process model API to extensions
+  (only the out-of-process Kiro CLI ACP), so the provider is not implementable as
+  specified; in Kiro, use Ollama or a hosted provider. Req 17.4's Kiro-only message is
+  consequently unused.
 
 ## What this design adds that the spec omits
 
