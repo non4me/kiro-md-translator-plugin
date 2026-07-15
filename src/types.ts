@@ -260,6 +260,9 @@ export type ExtensionMessage =
       /** Whether the per-block comment control is shown (req 11.13). When false the
        *  webview hides the comment icon; the edit (pencil) control is unaffected. */
       commentsEnabled: boolean
+      /** Whether the Ask AI selection control is shown. Mirrors `commentsEnabled` but is
+       *  driven by AI Assistant configuration (a provider + API key where required). */
+      aiAssistantEnabled: boolean
     }
   | { type: 'memoryWarning'; level: 'large-file' | 'high-memory' }
   // Native editor-title toolbar commands (req 3.21): the host forwards a title-bar

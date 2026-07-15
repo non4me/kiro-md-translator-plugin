@@ -100,11 +100,27 @@ export function getPreviewHtml(
     #tooltip > :last-child { margin-bottom: 0; }
     /* Shown state is display:flex (centres the box); the initial [hidden] attribute
        + the [hidden] rule below keep it hidden until openEditModal removes hidden. */
-    #modal, #comment-modal { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex;
-      align-items: center; justify-content: center; z-index: 20; }
-    #modal .box, #comment-modal .box { background: var(--vscode-editor-background); padding: 1rem;
-      border-radius: 6px; width: min(40rem, 90vw); display: flex; flex-direction: column; gap: .5rem; }
+    #modal, #comment-modal, #assistant-modal { position: fixed; inset: 0; background: rgba(0,0,0,.4);
+      display: flex; align-items: center; justify-content: center; z-index: 20; }
+    #modal .box, #comment-modal .box, #assistant-modal .box { background: var(--vscode-editor-background);
+      padding: 1rem; border-radius: 6px; width: min(40rem, 90vw); display: flex; flex-direction: column;
+      gap: .5rem; }
     textarea { width: 100%; min-height: 4rem; }
+    /* AI Assistant dialog (req 4/5): the selected block is shown read-only and capped so a
+       long selection does not push the chat log off screen (req 4.2). */
+    #assistant-selection { max-height: 10em; overflow-y: auto; white-space: pre-wrap;
+      border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: .4rem .5rem;
+      font-size: .9em; opacity: .85; }
+    #assistant-comments.muted { font-size: .78em; opacity: .65; }
+    #assistant-log { display: flex; flex-direction: column; gap: .4rem; max-height: 40vh;
+      overflow-y: auto; }
+    .ai-msg { border-radius: 4px; padding: .35rem .5rem; white-space: pre-wrap; word-break: break-word; }
+    .ai-msg-user { align-self: flex-end; background: var(--vscode-badge-background);
+      color: var(--vscode-badge-foreground); }
+    .ai-msg-ai { align-self: flex-start; background: var(--vscode-textCodeBlock-background, rgba(127,127,127,.12)); }
+    .ai-msg-ai > :first-child { margin-top: 0; }
+    .ai-msg-ai > :last-child { margin-bottom: 0; }
+    #assistant-error:empty { display: none; }
     /* Comments (req 11): the thread modal + comment list. */
     #comment-list { display: flex; flex-direction: column; gap: .4rem; max-height: 42vh; overflow-y: auto; }
     .cmt-item { border: 1px solid var(--vscode-panel-border); border-radius: 4px; padding: .4rem .5rem;
@@ -210,6 +226,7 @@ export function getPreviewHtml(
   <div id="sel-toolbar" role="toolbar" aria-label="Selection actions" hidden>
     <button id="sel-edit" title="Edit block" aria-label="Edit block"></button>
     <button id="sel-comment" title="Comment on selection" aria-label="Comment on selection"></button>
+    <button id="sel-ai" title="Ask AI about selection" aria-label="Ask AI" hidden></button>
   </div>
 
   <div id="tooltip" role="tooltip"></div>
@@ -235,6 +252,23 @@ export function getPreviewHtml(
       <div style="display:flex; gap:.5rem; justify-content:flex-end;">
         <button id="comment-close">Close</button>
         <button id="comment-add">Add</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="assistant-modal" role="dialog" aria-modal="true" aria-label="Ask AI" hidden>
+    <div class="box">
+      <strong>Ask AI</strong>
+      <div id="assistant-selection"></div>
+      <div id="assistant-comments" class="muted"></div>
+      <div id="assistant-log" aria-live="polite"></div>
+      <div id="assistant-error" role="alert"></div>
+      <textarea id="assistant-input" rows="2" placeholder="Ask about the selection…"></textarea>
+      <div style="display:flex; gap:.5rem; justify-content:flex-end;">
+        <button id="assistant-send">Send</button>
+        <button id="assistant-apply" hidden>Apply Changes</button>
+        <button id="assistant-summary">Save Summary</button>
+        <button id="assistant-close">Close</button>
       </div>
     </div>
   </div>

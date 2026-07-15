@@ -597,6 +597,7 @@ export class PreviewController implements IPreviewController {
       targetLang: cfg.targetLanguage,
       settingsHint: this.settingsHint(),
       commentsEnabled: this.deps.commentsEnabled?.() ?? true,
+      aiAssistantEnabled: this.deps.aiAssistant?.().enabled ?? false,
     })
   }
 

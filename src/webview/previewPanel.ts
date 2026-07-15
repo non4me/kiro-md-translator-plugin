@@ -34,6 +34,17 @@ const orphanedEl = document.getElementById('orphaned') as HTMLElement
 const selToolbar = document.getElementById('sel-toolbar') as HTMLElement
 const selEdit = document.getElementById('sel-edit') as HTMLButtonElement
 const selComment = document.getElementById('sel-comment') as HTMLButtonElement
+const selAi = document.getElementById('sel-ai') as HTMLButtonElement
+const assistantModal = document.getElementById('assistant-modal') as HTMLElement
+const assistantSelection = document.getElementById('assistant-selection') as HTMLElement
+const assistantComments = document.getElementById('assistant-comments') as HTMLElement
+const assistantLog = document.getElementById('assistant-log') as HTMLElement
+const assistantError = document.getElementById('assistant-error') as HTMLElement
+const assistantInput = document.getElementById('assistant-input') as HTMLTextAreaElement
+const assistantSend = document.getElementById('assistant-send') as HTMLButtonElement
+const assistantApply = document.getElementById('assistant-apply') as HTMLButtonElement
+const assistantSummary = document.getElementById('assistant-summary') as HTMLButtonElement
+const assistantClose = document.getElementById('assistant-close') as HTMLButtonElement
 
 // Comments (req 11). `commentCounts` drives the 💬 indicators; `openThreadIndex`
 // is the block whose thread modal is open; `threadMode` routes a commentThread
@@ -56,6 +67,12 @@ let threadReqIndex = -1
 // The block a popover request was fired from — so the peek anchors to the hovered
 // pane in bilingual, not always the first (source) cell that blocks().find returns.
 let threadAnchorEl: HTMLElement | undefined
+
+// AI Assistant (req 4/5). `aiEnabled` mirrors host config, gating `#sel-ai` visibility.
+// `aiStreamBubble` is the log entry currently receiving `assistantChunk` text — set on
+// send, replaced by `assistantReply`'s HTML, and cleared once the reply lands.
+let aiEnabled = false
+let aiStreamBubble: HTMLElement | undefined
 
 let editIndex = -1
 let editLastIndex = -1 // the last block of a multi-block edit range (=== editIndex for a single block)
@@ -159,6 +176,8 @@ const SVG_NS = 'http://www.w3.org/2000/svg'
 // Feather-style outline glyphs (stroke, no fill): edit-2 pencil + message-square.
 const EDIT_ICON = 'M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z'
 const COMMENT_ICON = 'M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z'
+// A four-point sparkle — the common "AI" glyph — for the Ask AI selection action.
+const AI_ICON = 'M12 2 L13.5 9.5 L21 11 L13.5 12.5 L12 20 L10.5 12.5 L3 11 L10.5 9.5 Z'
 // Toolbar glyphs (variant B), matching the native editor-title SVGs (media/*.svg):
 // a dictionary book with 文A (translate) and split columns (bilingual).
 const TRANSLATE_ICON = [
@@ -196,6 +215,7 @@ translateBtn.appendChild(icon(TRANSLATE_ICON))
 bilingualBtn.appendChild(icon(BILINGUAL_ICON))
 selEdit.appendChild(icon(EDIT_ICON))
 selComment.appendChild(icon(COMMENT_ICON))
+selAi.appendChild(icon(AI_ICON))
 
 /** Draw the gutter marker for every block. As of the affordance redesign (stage 2) the
  *  gutter shows ONLY the existing-comment marker — the edit and new-comment actions moved
@@ -636,6 +656,52 @@ function closeCommentModal(): void {
 
 commentClose.addEventListener('click', closeCommentModal)
 
+// --- AI Assistant chat dialog (req 4/5) ---------------------------------------
+
+/** Append a chat bubble (plain text) to the log and scroll it into view; returns the
+ *  bubble element so a caller (the send handler) can keep filling it as chunks stream in. */
+function appendChatBubble(role: 'user' | 'ai', text: string): HTMLElement {
+  const bubble = document.createElement('div')
+  bubble.className = `ai-msg ai-msg-${role}`
+  bubble.textContent = text
+  assistantLog.appendChild(bubble)
+  assistantLog.scrollTop = assistantLog.scrollHeight
+  return bubble
+}
+
+function openAssistantModal(): void {
+  assistantLog.replaceChildren()
+  assistantError.textContent = ''
+  assistantInput.value = ''
+  assistantApply.hidden = true
+  aiStreamBubble = undefined
+  assistantModal.hidden = false
+}
+
+/** The ONE way the assistant dialog closes — discards the in-memory chat log (req 4.8). */
+function closeAssistantModal(): void {
+  assistantModal.hidden = true
+  assistantLog.replaceChildren()
+  assistantError.textContent = ''
+  aiStreamBubble = undefined
+}
+
+assistantSend.addEventListener('click', () => {
+  const text = assistantInput.value.trim()
+  if (!text) return
+  appendChatBubble('user', text)
+  assistantInput.value = ''
+  assistantError.textContent = ''
+  aiStreamBubble = appendChatBubble('ai', '') // filled incrementally by assistantChunk
+  post({ type: 'askAiSend', text })
+})
+assistantApply.addEventListener('click', () => post({ type: 'askAiApply' })) // dialog stays open
+assistantSummary.addEventListener('click', () => post({ type: 'askAiSaveSummary' }))
+assistantClose.addEventListener('click', () => {
+  post({ type: 'askAiClose' })
+  closeAssistantModal()
+})
+
 // --- exclude selection from translation (req 3.19) ---------------------------
 
 // Add "Exclude from translation" to the NATIVE right-click menu of the preview (a
@@ -736,6 +802,21 @@ selComment.addEventListener('click', () => {
   }
   hideSelToolbar()
   if (Number.isFinite(idx)) openCommentModal(idx, fragment, endIndex, endFragment)
+})
+selAi.addEventListener('click', () => {
+  // Read the selection BEFORE hiding the toolbar, same as selComment above.
+  const sel = selectedBlocks()
+  const first = sel[0]
+  if (!first) return
+  const idx = Number(first.dataset.paragraphIndex)
+  const last = sel[sel.length - 1]
+  const lastIdx = sel.length > 1 ? Number(last.dataset.paragraphIndex) : undefined
+  const selectionText = window.getSelection()?.toString() ?? ''
+  const translated = bilingual ? first.closest('.bcell-r') !== null : displaying === 'translation'
+  hideSelToolbar()
+  if (!Number.isFinite(idx)) return
+  openAssistantModal()
+  post({ type: 'askAiOpen', paragraphIndex: idx, lastIndex: lastIdx, selection: selectionText, translated })
 })
 
 /** Build a fragment anchor from `rawText` (a selection, or a sub-range of it) within `blockEl`:
@@ -886,6 +967,8 @@ window.addEventListener('message', (event: MessageEvent) => {
       // per-block comment icon; toggling it live reflects a settings change at once.
       content.classList.toggle('comments-off', msg.commentsEnabled === false)
       selComment.hidden = msg.commentsEnabled === false // no new-comment action when disabled
+      aiEnabled = msg.aiAssistantEnabled === true
+      selAi.hidden = !aiEnabled
       const hint = msg.settingsHint as string | undefined
       settingsLink.hidden = !hint
       if (hint) settingsLink.textContent = hint
@@ -1020,6 +1103,35 @@ window.addEventListener('message', (event: MessageEvent) => {
       modalError.textContent = String(msg.message)
       break
     }
+    case 'assistantOpen': {
+      assistantSelection.textContent = String(msg.selection)
+      const n = Number(msg.commentCount) || 0
+      assistantComments.textContent = n > 0 ? `${n} comment${n === 1 ? '' : 's'} considered` : ''
+      assistantLog.replaceChildren()
+      assistantError.textContent = ''
+      aiStreamBubble = undefined
+      break
+    }
+    case 'assistantChunk': {
+      if (!aiStreamBubble) aiStreamBubble = appendChatBubble('ai', '')
+      aiStreamBubble.textContent += String(msg.text)
+      assistantLog.scrollTop = assistantLog.scrollHeight
+      break
+    }
+    case 'assistantReply': {
+      const bubble = aiStreamBubble ?? appendChatBubble('ai', '')
+      setSanitizedHtml(bubble, String(msg.html)) // host-sanitized (req 5)
+      aiStreamBubble = undefined
+      assistantApply.hidden = !msg.canApply
+      assistantLog.scrollTop = assistantLog.scrollHeight
+      break
+    }
+    case 'assistantError':
+      assistantError.textContent = String(msg.message)
+      break
+    case 'assistantClosed':
+      closeAssistantModal()
+      break
   }
 })
 
@@ -1244,6 +1356,11 @@ document.addEventListener('keydown', (e) => {
  * both fire and close two layers at once.
  */
 function dismissTopLayer(): boolean {
+  if (!assistantModal.hidden) {
+    post({ type: 'askAiClose' })
+    closeAssistantModal()
+    return true
+  }
   if (!commentModal.hidden) {
     // An in-progress comment edit is a layer of its own: Esc cancels the edit and returns
     // to the list. Closing the whole modal here would silently throw away what was typed.
