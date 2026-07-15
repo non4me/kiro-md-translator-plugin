@@ -20,13 +20,13 @@ export class GoogleAssistant implements IAssistantProvider {
     return JSON.stringify(system ? { systemInstruction: { parts: [{ text: system }] }, contents } : { contents })
   }
   async *chat(messages: AssistantMessage[], signal: AbortSignal): AsyncIterable<string> {
-    const url = `${HOST}/${encodeURIComponent(this.model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(this.key)}`
-    const res = await ensureOk(await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: this.payload(messages) }, signal, 120000))
+    const url = `${HOST}/${encodeURIComponent(this.model)}:streamGenerateContent?alt=sse`
+    const res = await ensureOk(await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': this.key }, body: this.payload(messages) }, signal, 120000))
     yield* streamSse(res, (o) => o.candidates?.[0]?.content?.parts?.[0]?.text)
   }
   async testConnection(): Promise<void> {
-    const url = `${HOST}/${encodeURIComponent(this.model)}:generateContent?key=${encodeURIComponent(this.key)}`
-    const res = await ensureOk(await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: this.payload([{ role: 'user', content: 'ping' }]) }, undefined, 15000))
+    const url = `${HOST}/${encodeURIComponent(this.model)}:generateContent`
+    const res = await ensureOk(await fetchWithTimeout(url, { method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': this.key }, body: this.payload([{ role: 'user', content: 'ping' }]) }, undefined, 15000))
     await res.json()
   }
 }
