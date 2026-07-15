@@ -223,6 +223,11 @@ export type WebviewMessage =
     }
   | { type: 'editComment'; commentId: string; body: string }
   | { type: 'deleteComment'; commentId: string }
+  | { type: 'askAiOpen'; paragraphIndex: number; lastIndex?: number; selection: string; translated: boolean }
+  | { type: 'askAiSend'; text: string }
+  | { type: 'askAiApply' }
+  | { type: 'askAiSaveSummary' }
+  | { type: 'askAiClose' }
   | { type: 'openSettings' }
 
 /** Messages Extension Host → Webview. */
@@ -264,6 +269,11 @@ export type ExtensionMessage =
   | { type: 'commentsForBlocks'; blocks: BlockCommentCount[] }
   | { type: 'commentThread'; paragraphIndex: number; comments: Comment[]; threads: ThreadView[] }
   | { type: 'orphanedComments'; threads: Array<{ quote: string; comments: Comment[] }> }
+  | { type: 'assistantOpen'; selection: string; commentCount: number }
+  | { type: 'assistantChunk'; text: string }
+  | { type: 'assistantReply'; html: string; canApply: boolean }
+  | { type: 'assistantError'; message: string }
+  | { type: 'assistantClosed' }
 
 export type ErrorCode =
   | 'RENDER_TIMEOUT'
