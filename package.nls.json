@@ -4,5 +4,6 @@
   "config.section.languages": "Languages",
   "config.section.translation": "Translation",
   "config.section.comments": "Comments",
+  "config.section.aiAssistant": "AI Assistant",
   "config.section.appearance": "Appearance"
 }

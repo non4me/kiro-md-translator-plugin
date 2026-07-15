@@ -24,6 +24,9 @@ import { getPreviewHtml } from './webview/getPreviewHtml'
 import { codeThemeCss } from './highlightThemes'
 import { getNonce } from './webview/nonce'
 import type { IActivationController, ITranslationProvider, ProviderType, WebviewMessage } from './types'
+import { AssistantSecretManager } from './AssistantSecretManager'
+import { createAssistantProvider } from './assistant/AssistantProviderFactory'
+import { KEYLESS_IDE_PROVIDERS, type AssistantProviderType } from './assistant/types'
 
 const VIEW_TYPE = 'kiro-md-translator.preview'
 const EXTENSION_ID = 'VladimirTroyanenko.kiro-md-translator-plugin'
@@ -32,6 +35,14 @@ const PROVIDER_LABEL: Record<ProviderType, string> = {
   google: 'Google',
   custom: 'Custom',
   ollama: 'Ollama',
+}
+const ASSISTANT_PROVIDER_LABEL: Record<AssistantProviderType, string> = {
+  ollama: 'Ollama',
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  google: 'Google',
+  'vscode-copilot': 'GitHub Copilot Chat',
+  'kiro-ide': 'Kiro IDE',
 }
 
 /**
@@ -44,8 +55,12 @@ export class ActivationController implements IActivationController, vscode.Custo
   /** L1 in-memory (≤50) over L2 persistent memory; built in activate() with globalState. */
   private cache!: LayeredTranslationCache
   private secrets!: SecretManager
+  private aiSecrets!: AssistantSecretManager
   private context!: vscode.ExtensionContext
   private apiKey: string | undefined
+  /** Keyed by assistant provider so a provider switch doesn't require a re-fetch
+   *  round-trip before `buildAssistantProvider` can run synchronously. */
+  private aiKeyCache: Partial<Record<AssistantProviderType, string>> = {}
   /** Resolves once the initial key migration + load has finished; the per-doc
    *  auto-translate awaits it so cold start never translates with an empty key. */
   private ready: Promise<void> = Promise.resolve()
@@ -69,6 +84,7 @@ export class ActivationController implements IActivationController, vscode.Custo
       () => this.configFingerprint(),
     )
     this.secrets = new SecretManager(context.secrets)
+    this.aiSecrets = new AssistantSecretManager(context.secrets)
     this.ready = this.initApiKey()
     // Home of the draft comment store (req 11.14). `createDirectory` is recursive and
     // idempotent, so this is safe to fire on every activation.
@@ -118,6 +134,18 @@ export class ActivationController implements IActivationController, vscode.Custo
       vscode.commands.registerCommand('kiro-md-translator.testConnection', (provider?: ProviderType) =>
         this.testProviderConnection(provider),
       ),
+      // Store an AI Assistant provider's API key in the OS keychain (masked input),
+      // namespaced apart from translation keys (req 16.5/16.6).
+      vscode.commands.registerCommand(
+        'kiro-md-translator.setAiAssistantKey',
+        (provider?: AssistantProviderType) => this.promptSetAiKey(provider),
+      ),
+      // Test an AI Assistant provider's connection with its stored key; result shown
+      // as a toast (req 16.7–16.9).
+      vscode.commands.registerCommand(
+        'kiro-md-translator.testAiAssistantConnection',
+        (provider?: AssistantProviderType) => this.testAiConnection(provider),
+      ),
       // Add the selection to the Glossary do-not-translate list (req 3.19). Invoked
       // from the editor context menu (reads the text editor) and the preview webview
       // context menu (the `data-vscode-context` arg carries the selection).
@@ -144,7 +172,7 @@ export class ActivationController implements IActivationController, vscode.Custo
         // The key reload is async; once it settles, re-push the button state so a
         // provider switch that changes the key requirement updates the toolbar hint
         // (req 3.20) rather than showing the previous provider's key status.
-        void this.refreshApiKey().then(() => {
+        void Promise.all([this.refreshApiKey(), this.refreshAiKey()]).then(() => {
           for (const c of this.controllers) c.updateButtonState()
           this.updateTitleContext() // key requirement may have changed → refresh icons
         })
@@ -192,11 +220,18 @@ export class ActivationController implements IActivationController, vscode.Custo
   /** Migrate a pre-per-provider key into the active slot, then cache the key. */
   private async initApiKey(): Promise<void> {
     await this.secrets.migrateLegacyKey(this.settings.getProviderType())
-    await this.refreshApiKey()
+    await Promise.all([this.refreshApiKey(), this.refreshAiKey()])
   }
 
   private async refreshApiKey(): Promise<void> {
     this.apiKey = await this.secrets.getApiKey(this.settings.getProviderType())
+  }
+
+  /** Load the active AI Assistant provider's key into the cache, so
+   *  `buildAssistantProvider` (in `PreviewDeps`) can stay synchronous. */
+  private async refreshAiKey(): Promise<void> {
+    const p = this.settings.getAiAssistantConfig().provider
+    this.aiKeyCache[p] = (await this.aiSecrets.getKey(p)) ?? ''
   }
 
   private buildProvider(): ITranslationProvider {
@@ -407,6 +442,51 @@ export class ActivationController implements IActivationController, vscode.Custo
     }
   }
 
+  /** Command: prompt for an AI Assistant provider's API key (masked) and store it
+   *  in the keychain. Keyless IDE providers (`vscode-copilot`, `kiro-ide`) need no
+   *  key — inform the user and return (req 16.5). */
+  private async promptSetAiKey(provider?: AssistantProviderType): Promise<void> {
+    const p = provider ?? this.settings.getAiAssistantConfig().provider
+    const label = ASSISTANT_PROVIDER_LABEL[p] ?? p
+    if (KEYLESS_IDE_PROVIDERS.includes(p)) {
+      void vscode.window.showInformationMessage(`${label} runs inside the IDE and requires no API key.`)
+      return
+    }
+    const key = await vscode.window.showInputBox({
+      prompt: `${label} API key`,
+      password: true,
+      ignoreFocusOut: true,
+      placeHolder: 'Paste the key, or leave empty and press Enter to clear it',
+    })
+    if (key === undefined) return // user cancelled
+    if (key.trim() === '') {
+      await this.aiSecrets.deleteKey(p)
+      void vscode.window.showInformationMessage(`${label} API key cleared.`)
+    } else {
+      await this.aiSecrets.saveKey(p, key.trim())
+      void vscode.window.showInformationMessage(`${label} API key saved.`)
+    }
+    await this.refreshAiKey()
+    for (const c of this.controllers) c.updateButtonState()
+  }
+
+  /** Command: build the AI Assistant provider with its stored key and report the
+   *  test as a toast (req 16.7–16.9). Providers the factory does not support yet
+   *  (openai/anthropic/google/vscode-copilot/kiro-ide land in later tasks) throw
+   *  from `createAssistantProvider` — caught and toasted, never crashed. */
+  private async testAiConnection(provider?: AssistantProviderType): Promise<void> {
+    const p = provider ?? this.settings.getAiAssistantConfig().provider
+    const label = ASSISTANT_PROVIDER_LABEL[p] ?? p
+    const key = (await this.aiSecrets.getKey(p)) ?? ''
+    try {
+      const cfg = { ...this.settings.getAiAssistantConfig(), provider: p }
+      await createAssistantProvider(cfg, key, this.settings.getConfig()).testConnection()
+      void vscode.window.showInformationMessage(`${label}: connection successful.`)
+    } catch (err) {
+      void vscode.window.showErrorMessage(`${label}: ${(err as Error).message || 'connection failed'}`)
+    }
+  }
+
   /** Command: add the current selection to the Glossary (do-not-translate) list.
    *  From the editor context menu it reads the active text editor's selection; from
    *  the preview webview context menu it reads the selection out of the forwarded
@@ -515,6 +595,12 @@ export class ActivationController implements IActivationController, vscode.Custo
       whenReady: () => this.ready,
       hasApiKey: () => (this.apiKey ?? '').trim().length > 0,
       commentsEnabled: () => this.settings.getCommentsEnabled(),
+      aiAssistant: () => this.settings.getAiAssistantConfig(),
+      buildAssistantProvider: () => {
+        const cfg = this.settings.getAiAssistantConfig()
+        const key = this.aiKeyCache[cfg.provider] ?? ''
+        return createAssistantProvider(cfg, key, this.settings.getConfig())
+      },
     }
 
     const controller = new PreviewController(deps)
