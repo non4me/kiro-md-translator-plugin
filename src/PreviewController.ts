@@ -17,6 +17,9 @@ import { TranslationEngine } from './TranslationEngine'
 import { stripInlineComments } from './inlineComments'
 import { blocksFromLineMap } from './blocks'
 import { t } from './l10n'
+import { AssistantSession } from './assistant/AssistantSession'
+import { buildContext, headingPath } from './assistant/context'
+import { DEFAULT_SYSTEM_PROMPT, type AiAssistantConfig, type IAssistantProvider } from './assistant/types'
 
 const RENDER_DEBOUNCE_MS = 300
 const TRANSLATE_DEBOUNCE_MS = 1000
@@ -54,6 +57,13 @@ export interface PreviewDeps {
   hasApiKey?: () => boolean
   /** Whether the per-block comment control is shown (req 11.13). Absent → true. */
   commentsEnabled?: () => boolean
+  /** AI Assistant configuration (req 1/17). Absent → the assistant is off. */
+  aiAssistant?: () => AiAssistantConfig
+  /** Builds the provider for the current assistant config. Throws a user-facing
+   *  message when the assistant is unconfigured (req 17.1/17.2). */
+  buildAssistantProvider?: () => IAssistantProvider
+  /** Approximate token budget for the assembled context (req 5). Default 24_000. */
+  aiTokenBudget?: () => number
 }
 
 type State =
@@ -289,9 +299,91 @@ export class PreviewController implements IPreviewController {
         this.deps.commentsService?.deleteComment(message.commentId)
         this.emitComments()
         break
+      case 'askAiOpen':
+        void this.openAssistant(message)
+        break
+      case 'askAiSend':
+        void this.assistant?.ask(message.text)
+        break
+      case 'askAiApply':
+        this.applyAssistantEdit()
+        break
+      case 'askAiSaveSummary':
+        void this.saveAssistantSummary()
+        break
+      case 'askAiClose':
+        this.assistant?.cancel()
+        this.assistant = undefined
+        break
       case 'cancelParagraphEdit':
       case 'ready':
         break
+    }
+  }
+
+  // --- AI Assistant (req 1/5/7/8/17) --------------------------------------
+
+  private assistant: AssistantSession | undefined
+  private assistantSel: { first: number; last: number } | undefined
+
+  private async openAssistant(m: Extract<WebviewMessage, { type: 'askAiOpen' }>): Promise<void> {
+    if (!this.deps.aiAssistant?.().enabled) return
+    const first = m.paragraphIndex
+    const last = m.lastIndex ?? first
+    this.assistantSel = { first, last }
+    let provider: IAssistantProvider | undefined
+    try {
+      provider = this.deps.buildAssistantProvider?.()
+    } catch (err) {
+      this.deps.post({ type: 'assistantError', message: (err as Error).message })
+      return
+    }
+    if (!provider) {
+      this.deps.post({ type: 'assistantError', message: t('AI Assistant not configured') })
+      return
+    }
+    const cfg = this.deps.aiAssistant()
+    const source = this.paragraphRangeText(first, last) ?? ''
+    const comments = (this.deps.commentsService?.getThreads(first) ?? []).flatMap((tv) =>
+      tv.comments.map((c) => c.body),
+    )
+    const initial = buildContext({
+      systemPrompt: cfg.systemPrompt || DEFAULT_SYSTEM_PROMPT,
+      selection: m.selection,
+      selectionIsTranslated: m.translated,
+      sourceOfSelectedBlocks: source,
+      fullDocument: this.sourceText,
+      headingPath: headingPath(this.sourceText, this.paragraphStartLine(first) ?? 0),
+      comments,
+      tokenBudget: this.deps.aiTokenBudget?.() ?? 24_000,
+    })
+    this.assistant = new AssistantSession({
+      provider,
+      initial,
+      post: (msg) => this.deps.post(msg),
+      renderMarkdown: async (md) => (await this.deps.renderer.render(md, this.fileDir())).html,
+    })
+    this.deps.post({ type: 'assistantOpen', selection: m.selection, commentCount: comments.length })
+  }
+
+  private applyAssistantEdit(): void {
+    const edit = this.assistant?.lastEdit()
+    if (edit === undefined || !this.assistantSel) return
+    const { first, last } = this.assistantSel
+    // Reuse the existing edit path: open the modal pre-filled; the user saves (req 7.2/7.5).
+    this.deps.post({ type: 'openEditModal', paragraphIndex: first, lastIndex: last, storageText: edit, targetText: '' })
+  }
+
+  private async saveAssistantSummary(): Promise<void> {
+    if (!this.assistant || !this.assistantSel) return
+    try {
+      const body = await this.assistant.summarize()
+      this.deps.commentsService?.addComment(this.assistantSel.first, body)
+      this.emitComments()
+      this.assistant = undefined
+      this.deps.post({ type: 'assistantClosed' })
+    } catch (err) {
+      this.deps.post({ type: 'assistantError', message: t('Failed to save summary as comment: {0}', (err as Error).message) })
     }
   }
 
