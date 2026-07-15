@@ -147,6 +147,44 @@ export const l10n = {
   },
 }
 
+/** Mirrors vscode.LanguageModelChatMessageRole (values unused by the mock, kept for parity). */
+export const LanguageModelChatMessageRole = { User: 1, Assistant: 2, System: 0 } as const
+
+/** Minimal stand-in for vscode.LanguageModelChatMessage's `.User`/`.Assistant` factories. */
+export class LanguageModelChatMessage {
+  constructor(public role: string, public content: string, public name?: string) {}
+  static User(content: string, name?: string): LanguageModelChatMessage {
+    return new LanguageModelChatMessage('user', content, name)
+  }
+  static Assistant(content: string, name?: string): LanguageModelChatMessage {
+    return new LanguageModelChatMessage('assistant', content, name)
+  }
+}
+
+/** Scripted model backing vscode.lm.selectChatModels; set via __setLmModels. */
+export interface MockLmModel {
+  vendor: string
+  family: string
+  id: string
+  name: string
+  sendRequest: (
+    messages: LanguageModelChatMessage[],
+    options: unknown,
+    token: { isCancellationRequested: boolean; onCancellationRequested: (l: () => void) => Disposable },
+  ) => Promise<{ text: AsyncIterable<string> }>
+}
+
+let lmModels: MockLmModel[] = []
+
+/** Test seam: script the models vscode.lm.selectChatModels(...) returns. */
+export function __setLmModels(models: MockLmModel[]): void {
+  lmModels = models
+}
+
+export const lm = {
+  selectChatModels: async (_selector?: { family?: string }): Promise<MockLmModel[]> => lmModels,
+}
+
 export default {
   Disposable,
   EventEmitter,
@@ -160,4 +198,7 @@ export default {
   window,
   commands,
   l10n,
+  lm,
+  LanguageModelChatMessage,
+  LanguageModelChatMessageRole,
 }
