@@ -20,6 +20,7 @@ import { t } from './l10n'
 import { AssistantSession } from './assistant/AssistantSession'
 import { buildContext, headingPath } from './assistant/context'
 import { DEFAULT_SYSTEM_PROMPT, type AiAssistantConfig, type IAssistantProvider } from './assistant/types'
+import { assistantErrorMessage } from './assistant/errors'
 
 const RENDER_DEBOUNCE_MS = 300
 const TRANSLATE_DEBOUNCE_MS = 1000
@@ -338,7 +339,8 @@ export class PreviewController implements IPreviewController {
     try {
       provider = this.deps.buildAssistantProvider?.()
     } catch (err) {
-      this.deps.post({ type: 'assistantError', message: (err as Error).message })
+      console.error('AI Assistant: failed to build provider', err)
+      this.deps.post({ type: 'assistantError', message: assistantErrorMessage(err) })
       return
     }
     if (!provider) {
@@ -373,8 +375,14 @@ export class PreviewController implements IPreviewController {
     const edit = this.assistant?.lastEdit()
     if (edit === undefined || !this.assistantSel) return
     const { first, last } = this.assistantSel
-    // Reuse the existing edit path: open the modal pre-filled; the user saves (req 7.2/7.5).
-    this.deps.post({ type: 'openEditModal', paragraphIndex: first, lastIndex: last, storageText: edit, targetText: '' })
+    try {
+      // Reuse the existing edit path: open the modal pre-filled; the user saves (req 7.2/7.5).
+      this.deps.post({ type: 'openEditModal', paragraphIndex: first, lastIndex: last, storageText: edit, targetText: '' })
+    } catch (err) {
+      // Keep the dialog open on failure (req 7 stay-open); report per req 17.7.
+      console.error('AI Assistant: failed to apply changes', err)
+      this.deps.post({ type: 'assistantError', message: t('Failed to apply changes: {0}', (err as Error).message) })
+    }
   }
 
   private async saveAssistantSummary(): Promise<void> {
@@ -386,6 +394,7 @@ export class PreviewController implements IPreviewController {
       this.assistant = undefined
       this.deps.post({ type: 'assistantClosed' })
     } catch (err) {
+      console.error('AI Assistant: failed to save summary as comment', err)
       this.deps.post({ type: 'assistantError', message: t('Failed to save summary as comment: {0}', (err as Error).message) })
     }
   }

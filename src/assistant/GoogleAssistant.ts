@@ -2,6 +2,7 @@ import { TranslatorError } from '../types'
 import type { AssistantMessage, IAssistantProvider } from './types'
 import { ensureOk, fetchWithTimeout } from '../providers/http'
 import { streamSse } from './stream'
+import { t } from '../l10n'
 
 const HOST = 'https://generativelanguage.googleapis.com/v1beta/models'
 
@@ -9,7 +10,7 @@ export class GoogleAssistant implements IAssistantProvider {
   readonly id = 'google' as const
   readonly displayName = 'Google Gemini'
   constructor(private readonly key: string, private readonly model: string) {
-    if (!key) throw new TranslatorError('INVALID_ENDPOINT_URL', 'API key required for Google')
+    if (!key) throw new TranslatorError('INVALID_ENDPOINT_URL', t('API key required for {0}', 'Google'))
   }
   private payload(messages: AssistantMessage[]) {
     const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n')

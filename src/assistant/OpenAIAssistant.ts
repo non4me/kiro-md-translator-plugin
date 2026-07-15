@@ -2,6 +2,7 @@ import { TranslatorError } from '../types'
 import type { AssistantMessage, IAssistantProvider } from './types'
 import { ensureOk, fetchWithTimeout } from '../providers/http'
 import { streamSse } from './stream'
+import { t } from '../l10n'
 
 const ENDPOINT = 'https://api.openai.com/v1/chat/completions'
 const TIMEOUT = 120000
@@ -10,7 +11,7 @@ export class OpenAIAssistant implements IAssistantProvider {
   readonly id = 'openai' as const
   readonly displayName = 'OpenAI'
   constructor(private readonly key: string, private readonly model: string) {
-    if (!key) throw new TranslatorError('INVALID_ENDPOINT_URL', 'API key required for OpenAI')
+    if (!key) throw new TranslatorError('INVALID_ENDPOINT_URL', t('API key required for {0}', 'OpenAI'))
   }
   async *chat(messages: AssistantMessage[], signal: AbortSignal): AsyncIterable<string> {
     const res = await ensureOk(await fetchWithTimeout(ENDPOINT, {

@@ -2,6 +2,7 @@ import { TranslatorError } from '../types'
 import type { AssistantMessage, IAssistantProvider } from './types'
 import { ensureOk, fetchWithTimeout } from '../providers/http'
 import { streamSse } from './stream'
+import { t } from '../l10n'
 
 const ENDPOINT = 'https://api.anthropic.com/v1/messages'
 
@@ -9,7 +10,7 @@ export class AnthropicAssistant implements IAssistantProvider {
   readonly id = 'anthropic' as const
   readonly displayName = 'Anthropic'
   constructor(private readonly key: string, private readonly model: string) {
-    if (!key) throw new TranslatorError('INVALID_ENDPOINT_URL', 'API key required for Anthropic')
+    if (!key) throw new TranslatorError('INVALID_ENDPOINT_URL', t('API key required for {0}', 'Anthropic'))
   }
   private body(messages: AssistantMessage[], stream: boolean) {
     const system = messages.filter((m) => m.role === 'system').map((m) => m.content).join('\n\n')

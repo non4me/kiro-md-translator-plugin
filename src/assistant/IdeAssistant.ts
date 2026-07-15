@@ -1,6 +1,7 @@
 import * as vscode from 'vscode'
 import { TranslatorError } from '../types'
 import type { AssistantMessage, IAssistantProvider, AssistantProviderType } from './types'
+import { t } from '../l10n'
 
 /**
  * IDE-hosted assistant: wraps `vscode.lm.selectChatModels` + `model.sendRequest`.
@@ -23,8 +24,8 @@ export class IdeAssistant implements IAssistantProvider {
       throw new TranslatorError(
         'INVALID_ENDPOINT_URL',
         this.id === 'kiro-ide'
-          ? 'Kiro IDE Provider is only available in Kiro IDE'
-          : 'GitHub Copilot not found. Please install and authenticate the GitHub Copilot extension',
+          ? t('Kiro IDE Provider is only available in Kiro IDE')
+          : t('GitHub Copilot not found. Please install and authenticate the GitHub Copilot extension'),
       )
     }
     return models[0]

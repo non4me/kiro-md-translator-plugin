@@ -1,6 +1,7 @@
 import type { ExtensionMessage } from '../types'
 import type { AssistantMessage, IAssistantProvider } from './types'
 import { extractEdit } from './editFence'
+import { assistantErrorMessage } from './errors'
 
 export interface AssistantSessionDeps {
   provider: IAssistantProvider
@@ -38,7 +39,8 @@ export class AssistantSession {
       const html = await this.deps.renderMarkdown(reply)
       this.deps.post({ type: 'assistantReply', html, canApply: extractEdit(reply) !== undefined })
     } catch (err) {
-      this.deps.post({ type: 'assistantError', message: (err as Error).message || 'Request failed' })
+      console.error('AI Assistant: chat request failed', err)
+      this.deps.post({ type: 'assistantError', message: assistantErrorMessage(err) })
     }
   }
 

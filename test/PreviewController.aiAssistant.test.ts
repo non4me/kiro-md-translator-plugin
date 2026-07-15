@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from 'vitest'
 import { PreviewController, type PreviewDeps } from '../src/PreviewController'
 import type { IAssistantProvider } from '../src/assistant/types'
+import { TranslatorError } from '../src/types'
 
 function fake(reply: string): IAssistantProvider {
   return { id: 'ollama', displayName: 'x', async *chat() { yield reply }, async testConnection() {} }
@@ -134,5 +135,75 @@ describe('PreviewController — AI Assistant', () => {
       (call) => call[0].type === 'assistantChunk' && call[0].text === 'late chunk from the abandoned first session',
     )
     expect(lateChunk).toBe(false)
+  })
+
+  // --- req 17: error-message wording (routed through t()) -----------------
+
+  const openAndError = (post: ReturnType<typeof vi.fn>): string | undefined => {
+    const call = post.mock.calls.find((c) => c[0].type === 'assistantError')
+    return call?.[0].message as string | undefined
+  }
+
+  it('17.1: an unconfigured provider posts "AI Assistant not configured"', async () => {
+    const post = vi.fn()
+    const c = new PreviewController(deps({ post, buildAssistantProvider: () => undefined }))
+    c.primeRenderState('Block one source.\n\nBlock two.', [{ paragraphIndex: 0, startLine: 0, endLine: 0 }], false)
+    c.onWebviewMessage({ type: 'askAiOpen', paragraphIndex: 0, selection: 'Block one', translated: false } as never)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(openAndError(post)).toBe('AI Assistant not configured')
+  })
+
+  it('17.2: a missing API key surfaces "API key required for <provider>"', async () => {
+    const post = vi.fn()
+    const c = new PreviewController(deps({
+      post,
+      buildAssistantProvider: () => { throw new TranslatorError('INVALID_ENDPOINT_URL', 'API key required for OpenAI') },
+    }))
+    c.primeRenderState('Block one source.\n\nBlock two.', [{ paragraphIndex: 0, startLine: 0, endLine: 0 }], false)
+    c.onWebviewMessage({ type: 'askAiOpen', paragraphIndex: 0, selection: 'Block one', translated: false } as never)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(openAndError(post)).toBe('API key required for OpenAI')
+  })
+
+  it('17.5: a transport failure surfaces "Connection failed: <reason>"', async () => {
+    const post = vi.fn()
+    const c = new PreviewController(deps({
+      post,
+      buildAssistantProvider: () => { throw new TranslatorError('TRANSLATION_HTTP_ERROR', 'HTTP 503') },
+    }))
+    c.primeRenderState('Block one source.\n\nBlock two.', [{ paragraphIndex: 0, startLine: 0, endLine: 0 }], false)
+    c.onWebviewMessage({ type: 'askAiOpen', paragraphIndex: 0, selection: 'Block one', translated: false } as never)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(openAndError(post)).toBe('Connection failed: HTTP 503')
+  })
+
+  it('17.7: a failed apply surfaces "Failed to apply changes: <reason>"', async () => {
+    const reply = 'Here you go.\n\n```rmt-edit\nNew paragraph text.\n```\n'
+    const post = vi.fn((m: { type: string }) => {
+      if (m.type === 'openEditModal') throw new Error('webview disposed')
+    })
+    const c = new PreviewController(deps({ post: post as never, buildAssistantProvider: () => fakeChunked(reply) }))
+    c.primeRenderState('Block one source.\n\nBlock two.', [{ paragraphIndex: 0, startLine: 0, endLine: 0 }], false)
+    c.onWebviewMessage({ type: 'askAiOpen', paragraphIndex: 0, selection: 'Block one', translated: false } as never)
+    await new Promise((r) => setTimeout(r, 0))
+    c.onWebviewMessage({ type: 'askAiSend', text: 'Rewrite this' } as never)
+    await new Promise((r) => setTimeout(r, 0))
+    c.onWebviewMessage({ type: 'askAiApply' } as never)
+    expect(openAndError(post)).toBe('Failed to apply changes: webview disposed')
+  })
+
+  it('17.8: a failed comment save surfaces "Failed to save summary as comment: <reason>"', async () => {
+    const post = vi.fn()
+    const addComment = vi.fn(() => { throw new Error('disk full') })
+    const c = new PreviewController(deps({
+      post,
+      commentsService: { getThreads: () => [], addComment, reanchor: () => ({ forBlocks: [], orphaned: [] }) } as never,
+    }))
+    c.primeRenderState('Block one source.\n\nBlock two.', [{ paragraphIndex: 0, startLine: 0, endLine: 0 }], false)
+    c.onWebviewMessage({ type: 'askAiOpen', paragraphIndex: 0, selection: 'Block one', translated: false } as never)
+    await new Promise((r) => setTimeout(r, 0))
+    c.onWebviewMessage({ type: 'askAiSaveSummary' } as never)
+    await new Promise((r) => setTimeout(r, 0))
+    expect(openAndError(post)).toBe('Failed to save summary as comment: disk full')
   })
 })
