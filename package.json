@@ -271,25 +271,23 @@
               "openai",
               "anthropic",
               "google",
-              "vscode-copilot",
-              "kiro-ide"
+              "vscode-copilot"
             ],
             "enumDescriptions": [
               "Local Ollama server (set Endpoint and Model below). No API key required.",
               "OpenAI API. Requires an API key.",
               "Anthropic API. Requires an API key.",
               "Google Gemini API. Requires an API key.",
-              "GitHub Copilot Chat inside VS Code. No API key or endpoint needed.",
-              "The Kiro IDE's built-in assistant. No API key or endpoint needed."
+              "GitHub Copilot Chat inside VS Code. No API key or endpoint needed."
             ],
             "default": "ollama",
-            "markdownDescription": "The AI Assistant provider used to explain or discuss a selected fragment.\n\n**API keys** are stored in the OS keychain, never in `settings.json`:\n\n- **OpenAI** — [Set key](command:kiro-md-translator.setAiAssistantKey?%5B%22openai%22%5D) · [Test connection](command:kiro-md-translator.testAiAssistantConnection?%5B%22openai%22%5D)\n- **Anthropic** — [Set key](command:kiro-md-translator.setAiAssistantKey?%5B%22anthropic%22%5D) · [Test connection](command:kiro-md-translator.testAiAssistantConnection?%5B%22anthropic%22%5D)\n- **Google** — [Set key](command:kiro-md-translator.setAiAssistantKey?%5B%22google%22%5D) · [Test connection](command:kiro-md-translator.testAiAssistantConnection?%5B%22google%22%5D)\n\n**Privacy:** with a hosted provider (OpenAI, Anthropic, Google), the whole document and any anchored comments leave this machine on every chat turn. Ollama, GitHub Copilot Chat, and the Kiro IDE assistant do not send the document to a third-party API."
+            "markdownDescription": "The AI Assistant provider used to explain or discuss a selected fragment.\n\n**API keys** are stored in the OS keychain, never in `settings.json`:\n\n- **OpenAI** — [Set key](command:kiro-md-translator.setAiAssistantKey?%5B%22openai%22%5D) · [Test connection](command:kiro-md-translator.testAiAssistantConnection?%5B%22openai%22%5D)\n- **Anthropic** — [Set key](command:kiro-md-translator.setAiAssistantKey?%5B%22anthropic%22%5D) · [Test connection](command:kiro-md-translator.testAiAssistantConnection?%5B%22anthropic%22%5D)\n- **Google** — [Set key](command:kiro-md-translator.setAiAssistantKey?%5B%22google%22%5D) · [Test connection](command:kiro-md-translator.testAiAssistantConnection?%5B%22google%22%5D)\n\n**Privacy:** with a hosted provider (OpenAI, Anthropic, Google), the whole document and any anchored comments leave this machine on every chat turn. Ollama and GitHub Copilot Chat do not send the document to a third-party API."
           },
           "kiro-md-translator.aiAssistant.model": {
             "type": "string",
             "order": 2,
             "default": "",
-            "markdownDescription": "Model name for the selected AI Assistant provider (e.g. `llama3.1`, `gpt-4o`, `claude-sonnet-4-5`). Ignored for `vscode-copilot` and `kiro-ide`."
+            "markdownDescription": "Model name for the selected AI Assistant provider (e.g. `llama3.1`, `gpt-4o`, `claude-sonnet-4-5`). Ignored for `vscode-copilot`."
           },
           "kiro-md-translator.aiAssistant.endpoint": {
             "type": "string",

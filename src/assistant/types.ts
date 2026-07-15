@@ -1,5 +1,5 @@
 export type AssistantProviderType =
-  | 'ollama' | 'openai' | 'anthropic' | 'google' | 'vscode-copilot' | 'kiro-ide'
+  | 'ollama' | 'openai' | 'anthropic' | 'google' | 'vscode-copilot'
 
 export interface AssistantMessage {
   role: 'system' | 'user' | 'assistant'
@@ -27,7 +27,7 @@ export interface IAssistantProvider {
 /** Providers that authenticate with a keychain key (req 1.4). */
 export const KEYED_ASSISTANT_PROVIDERS: AssistantProviderType[] = ['openai', 'anthropic', 'google']
 /** Providers that need no key or endpoint (req 1.6). */
-export const KEYLESS_IDE_PROVIDERS: AssistantProviderType[] = ['vscode-copilot', 'kiro-ide']
+export const KEYLESS_IDE_PROVIDERS: AssistantProviderType[] = ['vscode-copilot']
 
 export const DEFAULT_SYSTEM_PROMPT =
   'You are a documentation assistant embedded in a Markdown specification reader. ' +

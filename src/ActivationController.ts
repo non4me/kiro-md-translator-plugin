@@ -42,7 +42,6 @@ const ASSISTANT_PROVIDER_LABEL: Record<AssistantProviderType, string> = {
   anthropic: 'Anthropic',
   google: 'Google',
   'vscode-copilot': 'GitHub Copilot Chat',
-  'kiro-ide': 'Kiro IDE',
 }
 
 /**
@@ -443,7 +442,7 @@ export class ActivationController implements IActivationController, vscode.Custo
   }
 
   /** Command: prompt for an AI Assistant provider's API key (masked) and store it
-   *  in the keychain. Keyless IDE providers (`vscode-copilot`, `kiro-ide`) need no
+   *  in the keychain. Keyless IDE providers (`vscode-copilot`) need no
    *  key — inform the user and return (req 16.5). */
   private async promptSetAiKey(provider?: AssistantProviderType): Promise<void> {
     const p = provider ?? this.settings.getAiAssistantConfig().provider
@@ -472,7 +471,7 @@ export class ActivationController implements IActivationController, vscode.Custo
 
   /** Command: build the AI Assistant provider with its stored key and report the
    *  test as a toast (req 16.7–16.9). Providers the factory does not support yet
-   *  (openai/anthropic/google/vscode-copilot/kiro-ide land in later tasks) throw
+   *  (openai/anthropic/google/vscode-copilot land in later tasks) throw
    *  from `createAssistantProvider` — caught and toasted, never crashed. */
   private async testAiConnection(provider?: AssistantProviderType): Promise<void> {
     const p = provider ?? this.settings.getAiAssistantConfig().provider

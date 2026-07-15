@@ -5,17 +5,14 @@ import { t } from '../l10n'
 
 /**
  * IDE-hosted assistant: wraps `vscode.lm.selectChatModels` + `model.sendRequest`.
- * Serves BOTH `vscode-copilot` and `kiro-ide` — the model is whatever the running
- * IDE surfaces through `vscode.lm`, no IDE-specific API. See the factory below for
- * a note on the `kiro-ide` assumption (req 13.2/13.3, 17.3/17.4).
+ * Serves the VS Code Copilot language model via `vscode.lm` (req 13.2/13.3, 17.3).
  */
 export class IdeAssistant implements IAssistantProvider {
   readonly id: AssistantProviderType
-  readonly displayName: string
+  readonly displayName = 'VS Code Copilot'
 
   constructor(id: AssistantProviderType, private readonly family: string | undefined) {
     this.id = id
-    this.displayName = id === 'kiro-ide' ? 'Kiro IDE' : 'VS Code Copilot'
   }
 
   private async pick(): Promise<vscode.LanguageModelChat> {
@@ -23,9 +20,7 @@ export class IdeAssistant implements IAssistantProvider {
     if (!models.length) {
       throw new TranslatorError(
         'INVALID_ENDPOINT_URL',
-        this.id === 'kiro-ide'
-          ? t('Kiro IDE Provider is only available in Kiro IDE')
-          : t('GitHub Copilot not found. Please install and authenticate the GitHub Copilot extension'),
+        t('GitHub Copilot not found. Please install and authenticate the GitHub Copilot extension'),
       )
     }
     return models[0]

@@ -34,10 +34,4 @@ describe('IdeAssistant', () => {
       'GitHub Copilot not found. Please install and authenticate the GitHub Copilot extension',
     )
   })
-
-  it('throws the Kiro-not-found message when no model is available (req 17.4)', async () => {
-    __setLmModels([])
-    const p = new IdeAssistant('kiro-ide', undefined)
-    await expect(p.testConnection()).rejects.toThrow('Kiro IDE Provider is only available in Kiro IDE')
-  })
 })
