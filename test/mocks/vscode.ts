@@ -212,7 +212,12 @@ export function __setLmModels(models: MockLmModel[]): void {
 }
 
 export const lm = {
-  selectChatModels: async (_selector?: { family?: string }): Promise<MockLmModel[]> => lmModels,
+  selectChatModels: async (selector?: { vendor?: string; family?: string }): Promise<MockLmModel[]> =>
+    lmModels.filter(
+      (m) =>
+        (selector?.vendor === undefined || m.vendor === selector.vendor) &&
+        (selector?.family === undefined || m.family === selector.family),
+    ),
 }
 
 export default {

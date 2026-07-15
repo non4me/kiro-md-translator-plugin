@@ -16,7 +16,18 @@ export class IdeAssistant implements IAssistantProvider {
   }
 
   private async pick(): Promise<vscode.LanguageModelChat> {
-    const models = await vscode.lm.selectChatModels(this.family ? { family: this.family } : {})
+    // Constrain to the Copilot vendor so we never pick a different lm provider's
+    // model (a VS Code with Copilot exposes many vendors: copilot, copilotcli,
+    // claude-code, openrouter…). Try the configured/default family first, then
+    // fall back to any Copilot model so a family that this account lacks does not
+    // read as "Copilot unavailable".
+    const vendor = 'copilot'
+    let models = this.family
+      ? await vscode.lm.selectChatModels({ vendor, family: this.family })
+      : []
+    if (!models.length) {
+      models = await vscode.lm.selectChatModels({ vendor })
+    }
     if (!models.length) {
       throw new TranslatorError(
         'INVALID_ENDPOINT_URL',

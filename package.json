@@ -287,7 +287,7 @@
             "type": "string",
             "order": 2,
             "default": "",
-            "markdownDescription": "Model name for the selected AI Assistant provider (e.g. `llama3.1`, `gpt-4o`, `claude-sonnet-4-5`). Ignored for `vscode-copilot`."
+            "markdownDescription": "Model name for the selected AI Assistant provider (e.g. `llama3.1`, `gpt-4o`, `claude-sonnet-4.5`). For `vscode-copilot` this is the GitHub Copilot model family; leave empty to use `claude-sonnet-4.5` (falls back to any available Copilot model)."
           },
           "kiro-md-translator.aiAssistant.endpoint": {
             "type": "string",

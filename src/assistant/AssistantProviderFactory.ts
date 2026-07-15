@@ -28,7 +28,9 @@ export function createAssistantProvider(
     case 'google':
       return new GoogleAssistant(apiKey, config.model || 'gemini-1.5-flash')
     case 'vscode-copilot':
-      return new IdeAssistant('vscode-copilot', config.model || undefined)
+      // Default to Copilot's Claude Sonnet 4.5 family; pick() falls back to any
+      // Copilot model if this account doesn't have that family.
+      return new IdeAssistant('vscode-copilot', config.model || 'claude-sonnet-4.5')
     default:
       throw new TranslatorError('INVALID_ENDPOINT_URL', `Unsupported assistant provider: ${config.provider}`)
   }
