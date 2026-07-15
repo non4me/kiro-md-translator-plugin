@@ -327,6 +327,9 @@ export class PreviewController implements IPreviewController {
   private assistantSel: { first: number; last: number } | undefined
 
   private async openAssistant(m: Extract<WebviewMessage, { type: 'askAiOpen' }>): Promise<void> {
+    // A prior session may still be streaming (chunks/reply in flight); re-opening the
+    // dialog must not let its late messages cross-talk into the freshly-opened one.
+    this.assistant?.cancel()
     if (!this.deps.aiAssistant?.().enabled) return
     const first = m.paragraphIndex
     const last = m.lastIndex ?? first
