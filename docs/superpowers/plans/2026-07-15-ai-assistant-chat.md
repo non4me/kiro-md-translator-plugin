@@ -1092,11 +1092,11 @@ git commit -m "feat(ai-assistant): webview Ask AI button + streaming chat dialog
 - Consumes: `AssistantSecretManager`, `createAssistantProvider`, `SettingsManager.getAiAssistantConfig`.
 - Produces: commands `kiro-md-translator.setAiAssistantKey`, `kiro-md-translator.testAiAssistantConnection`; the assistant deps on every `PreviewController`.
 
-- [ ] **Step 1: Add the configuration section to `package.json`** with `order: 6` (after Comments at 5; shift Appearance to 7 — req 15.6). Properties: `aiAssistant.enabled` (boolean, default false), `aiAssistant.provider` (enum `ollama|openai|anthropic|google|vscode-copilot|kiro-ide` with `enumDescriptions` noting which need no config — req 15.8), `aiAssistant.model` (string), `aiAssistant.endpoint` (string, default `http://localhost:11434`), `aiAssistant.systemPrompt` (string, default `''`), `aiAssistant.reuseTranslationProvider` (boolean, default true). The `endpoint`/`provider` `markdownDescription` carries the command links (req 15.4/15.5) AND the privacy note for hosted providers (design: "the whole document and anchored comments leave the machine on every turn").
+- [ ] **Step 1: Add the configuration section to `package.json`** with `order: 6` (after Comments at 5; shift Appearance to 7 — req 15.6). Properties: `aiAssistant.enabled` (boolean, default false), `aiAssistant.provider` (enum `ollama|openai|anthropic|google|vscode-copilot` with `enumDescriptions` noting which need no config — req 15.8), `aiAssistant.model` (string), `aiAssistant.endpoint` (string, default `http://localhost:11434`), `aiAssistant.systemPrompt` (string, default `''`), `aiAssistant.reuseTranslationProvider` (boolean, default true). The `endpoint`/`provider` `markdownDescription` carries the command links (req 15.4/15.5) AND the privacy note for hosted providers (design: "the whole document and anchored comments leave the machine on every turn").
 
 - [ ] **Step 2: Add the two commands to `contributes.commands`:** `setAiAssistantKey` ("Markdown Translator: Set AI Assistant API Key"), `testAiAssistantConnection` ("Markdown Translator: Test AI Assistant Connection").
 
-- [ ] **Step 3: Wire `ActivationController`:** construct `this.aiSecrets = new AssistantSecretManager(context.secrets)`; register the two commands (`promptSetAiKey`, `testAiConnection`), mirroring `promptSetApiKey`/`testProviderConnection` but keyless-short-circuiting for `vscode-copilot`/`kiro-ide` (req 16.5). Add to `PreviewDeps` in `resolveCustomTextEditor`:
+- [ ] **Step 3: Wire `ActivationController`:** construct `this.aiSecrets = new AssistantSecretManager(context.secrets)`; register the two commands (`promptSetAiKey`, `testAiConnection`), mirroring `promptSetApiKey`/`testProviderConnection` but keyless-short-circuiting for `vscode-copilot` (req 16.5). Add to `PreviewDeps` in `resolveCustomTextEditor`:
 
 ```ts
 aiAssistant: () => this.settings.getAiAssistantConfig(),
@@ -1375,18 +1375,18 @@ import type { AssistantMessage, IAssistantProvider, AssistantProviderType } from
 
 export class IdeAssistant implements IAssistantProvider {
   readonly id: AssistantProviderType
-  readonly displayName: string
+  readonly displayName = 'VS Code Copilot'
   constructor(id: AssistantProviderType, private readonly family: string | undefined) {
     this.id = id
-    this.displayName = id === 'kiro-ide' ? 'Kiro IDE' : 'VS Code Copilot'
   }
   private async pick(): Promise<vscode.LanguageModelChat> {
-    const models = await vscode.lm.selectChatModels(this.family ? { family: this.family } : {})
+    // Constrain to the Copilot vendor; try the configured/default family, else any Copilot model.
+    const vendor = 'copilot'
+    let models = this.family ? await vscode.lm.selectChatModels({ vendor, family: this.family }) : []
+    if (!models.length) models = await vscode.lm.selectChatModels({ vendor })
     if (!models.length) {
       throw new TranslatorError('INVALID_ENDPOINT_URL',
-        this.id === 'kiro-ide'
-          ? 'Kiro IDE Provider is only available in Kiro IDE'
-          : 'GitHub Copilot not found. Please install and authenticate the GitHub Copilot extension')
+        'GitHub Copilot models are unavailable. Make sure GitHub Copilot is installed and signed in, then run "Markdown Translator: Test AI Assistant Connection" once (or reload the window) to authorize access.')
     }
     return models[0]
   }
@@ -1405,9 +1405,7 @@ export class IdeAssistant implements IAssistantProvider {
 }
 ```
 
-- [ ] **Step 5: Update the factory** per the spike:
-  - **Spike said Kiro uses `vscode.lm`:** `case 'vscode-copilot': case 'kiro-ide': return new IdeAssistant(config.provider, config.model || undefined)`.
-  - **Spike said no:** keep `vscode-copilot` on `IdeAssistant`; make `kiro-ide` a thin adapter over the native API the spike found, or a stub that throws req 17.4's message. Document the choice in the design doc's "IDE-model provider" section.
+- [ ] **Step 5: Update the factory** — add `case 'vscode-copilot': return new IdeAssistant('vscode-copilot', config.model || 'claude-sonnet-4.5')`. (The spike resolved negatively for Kiro — it registers no `vscode.lm` models — so `kiro-ide` was dropped; see the update note at the top of this plan.)
 
 - [ ] **Step 6: Run test + typecheck — expect PASS.** Run: `npx vitest run test/IdeAssistant.test.ts && npm run typecheck`
 
