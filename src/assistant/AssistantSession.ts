@@ -29,14 +29,22 @@ export class AssistantSession {
 
   /** `controller` is owned by the caller (one per `ask`/`summarize` turn), not shared
    *  state, so a superseded call can tell it was aborted even after a later turn has
-   *  already installed its own controller in `this.abort`. */
-  private async run(messages: AssistantMessage[], controller: AbortController): Promise<string> {
+   *  already installed its own controller in `this.abort`.
+   *
+   *  `emit` is false for `summarize`'s hidden turn: the user never asked for that
+   *  text, so streaming it would open an unrequested AI bubble in the chat log. The
+   *  accumulation is unconditional — the caller still receives the full string. */
+  private async run(
+    messages: AssistantMessage[],
+    controller: AbortController,
+    emit = true,
+  ): Promise<string> {
     this.abort?.abort()
     this.abort = controller
     let acc = ''
     for await (const chunk of this.deps.provider.chat(messages, controller.signal)) {
       acc += chunk
-      this.deps.post({ type: 'assistantChunk', text: chunk })
+      if (emit) this.deps.post({ type: 'assistantChunk', text: chunk })
     }
     return acc
   }
@@ -69,7 +77,7 @@ export class AssistantSession {
       ...this.history,
       { role: 'user', content: 'Summarize this discussion into a concise note I can keep as a comment. Plain prose, no preamble.' },
     ]
-    return this.run(messages, new AbortController())
+    return this.run(messages, new AbortController(), false)
   }
 
   lastEdit(): string | undefined { return extractEdit(this.lastReply) }

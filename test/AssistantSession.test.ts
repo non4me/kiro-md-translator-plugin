@@ -103,6 +103,27 @@ describe('AssistantSession', () => {
     expect(posts.some((p) => p.type === 'assistantReply')).toBe(false)
   })
 
+  // The summarization turn is hidden: the user pressed "Save Summary", not "Send".
+  // Streaming it would open an unrequested AI bubble in the chat log, because the
+  // webview creates one lazily on the first assistantChunk it sees.
+  it('summarize() returns the whole summary while posting no assistantChunk', async () => {
+    const posts: any[] = []
+    const s = new AssistantSession({
+      provider: fakeProvider('A concise summary.'),
+      initial: [{ role: 'system', content: 'S' }],
+      post: (m) => posts.push(m),
+      renderMarkdown: async (md) => md,
+    })
+    await s.ask('why?')
+    const chunksFromAsk = posts.filter((p) => p.type === 'assistantChunk').length
+    expect(chunksFromAsk).toBeGreaterThan(1) // baseline: a visible turn still streams
+
+    const body = await s.summarize()
+    expect(body).toBe('A concise summary.') // the caller still gets every chunk
+    expect(posts.filter((p) => p.type === 'assistantChunk')).toHaveLength(chunksFromAsk)
+    expect(posts.filter((p) => p.type === 'assistantReply')).toHaveLength(1) // no second reply either
+  })
+
   it('a superseding ask() aborts the prior turn without posting assistantError for it (I-1)', async () => {
     const posts: any[] = []
     const s = new AssistantSession({
