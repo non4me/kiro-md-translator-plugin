@@ -400,6 +400,36 @@ describe('E19 bilingual grid', () => {
  * produces the value at all.
  */
 describe('E24 native context menu selection', () => {
+  /* The seed at module load used to be swallowed by the redundancy guard — `''` was both
+   * the freshly computed text and the initial "last written" value — so a booted page with
+   * content on screen carried no `data-vscode-context` at all. The menu item was hidden
+   * either way (an unset context key is falsy), but only because of how VS Code evaluates a
+   * `when` clause for a key nobody contributes; publishing an explicit `false` is what the
+   * clause is actually written against, and it is what makes the attribute's PRESENCE mean
+   * "this preview publishes a selection context" from the first right-click on. */
+  it('publishes an explicit empty context from boot, before anything is selected', async () => {
+    const EMPTY = JSON.stringify({ kiroMdHasSelection: false, kiroMdSelection: '' })
+
+    preview = await openPreview()
+    // No content, no configuration, no selection: the module-load seed is the only thing
+    // that can have written this.
+    expect(await rawSelectionContext(preview)).toBe(EMPTY)
+    expect(await contextOffer(preview)).toEqual({ offered: false, term: '' })
+
+    // …and it is still there once the document is on screen, which is where the absence
+    // was observed.
+    await preview.configure()
+    await preview.render(SELECT_SOURCE)
+    expect(await rawSelectionContext(preview)).toBe(EMPTY)
+
+    // A seed, not a lock: the first real selection replaces it.
+    const selected = await preview.dragSelect('[data-paragraph-index="1"]')
+    expect(selected.trim().length).toBeGreaterThan(0)
+    expect(await contextOffer(preview)).toEqual({ offered: true, term: selected.trim() })
+
+    expect(preview.errors()).toEqual([])
+  })
+
   it('publishes the trimmed selection to the native context menu without asking the host', async () => {
     preview = await openPreview()
     await preview.configure()

@@ -268,25 +268,48 @@ describe('E20 Ask AI streaming dialog', () => {
   })
 
   /*
-   * CONFIRMED DEFECT, deliberately left unasserted here.
-   *
-   * `openAssistantModal` resets the log, the error, the input and all three buttons, but
-   * leaves `#assistant-selection` and `#assistant-comments` holding the PREVIOUS session's
-   * text until an `assistantOpen` overwrites them. It is the same optimistic-open hole the
-   * Send button was just fixed for: on every failing open (assistant disabled, provider
-   * build throws, no provider configured) PreviewController.openAssistant returns after
-   * posting only `assistantError`, so `assistantOpen` never arrives and the dialog sits
-   * there showing a DIFFERENT fragment's text and a stale comment count right next to
-   * "AI Assistant not configured" — which reads as though the assistant had considered
-   * comments on a selection the user never made. Measured on this harness: select blocks
-   * 2..3, confirm with commentCount 3, close, select block 1, open, `assistantError` →
-   * the header still shows the 2..3 text and still says "3 comments considered".
-   *
-   * Req 4.1 ("THE Chat_Dialog SHALL display the Selection_Fragment") is the oracle it
-   * fails. The fix is two lines in `openAssistantModal` (previewPanel.ts), which is out of
-   * this file's lane, so the case is parked as a todo rather than shipped red.
+   * The same optimistic-open hole the Send button was fixed for, one surface over. Every
+   * failing open (assistant disabled, provider build throws, no provider configured) has
+   * PreviewController.openAssistant return after posting only `assistantError`, so
+   * `assistantOpen` — the ONLY writer of the two header nodes — never arrives. Before the
+   * fix the dialog then sat there showing a DIFFERENT fragment's text and a stale comment
+   * count right next to "AI Assistant not configured", reading as though the assistant had
+   * considered comments on a selection the user never made. req 4.1 ("THE Chat_Dialog SHALL
+   * display the Selection_Fragment") is the oracle: the header describes THIS session or
+   * nothing at all.
    */
-  it.todo('clears the selection header on open so a failed open cannot show the previous fragment')
+  it('clears the selection header on open so a failed open cannot show the previous fragment', async () => {
+    preview = await openPreview()
+    const first = await askAiAboutTwoBlocks(preview)
+    await confirmSession(preview, first, 3)
+    expect(await preview.text('#assistant-selection')).toBe(first)
+    expect(await preview.text('#assistant-comments')).toBe('3 comments considered')
+
+    await preview.click('#assistant-close')
+    expect(await preview.hidden('#assistant-modal')).toBe(true)
+
+    // A DIFFERENT fragment, and an open the host answers with an error and nothing else.
+    const second = await preview.dragSelect('[data-paragraph-index="1"]')
+    expect(second).not.toBe(first)
+    expect(second.trim().length).toBeGreaterThan(0)
+    await preview.click('#sel-ai')
+    expect(await preview.hidden('#assistant-modal')).toBe(false)
+    await preview.send({ type: 'assistantError', message: 'AI Assistant not configured' })
+
+    expect(await preview.text('#assistant-selection')).toBe('')
+    expect(await preview.text('#assistant-comments')).toBe('')
+    // The error is the only thing the dialog claims, and there is still no session.
+    expect(await preview.text('#assistant-error')).toBe('AI Assistant not configured')
+    expect(await disabled(preview, '#assistant-send')).toBe(true)
+
+    // Positive control: a confirmed session fills the header with THIS selection, so the
+    // clearing above is the open path and not a header that stopped working.
+    await confirmSession(preview, second, 1)
+    expect(await preview.text('#assistant-selection')).toBe(second)
+    expect(await preview.text('#assistant-comments')).toBe('1 comment considered')
+
+    expect(unexpectedIssues(preview.errors())).toEqual([])
+  })
 })
 
 describe('E21 Ask AI error surface and close paths', () => {

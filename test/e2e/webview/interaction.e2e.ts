@@ -77,6 +77,21 @@ async function fieldState(preview: Preview, selector: string): Promise<{ value: 
   }, selector)
 }
 
+/** "Is anything highlighted?" — the two shapes of an empty selection at once (no range at
+ *  all, or a collapsed caret), so neither can pass for a stray word left selected. */
+async function selectionState(preview: Preview): Promise<{ text: string; collapsed: boolean }> {
+  return preview.page.evaluate(() => {
+    const sel = window.getSelection()
+    return {
+      text: sel?.toString() ?? '',
+      collapsed: !sel || sel.rangeCount === 0 || sel.isCollapsed,
+    }
+  })
+}
+
+/** A timestamp for a stored comment; the value is never asserted, only its presence. */
+const STAMP = '2026-07-01T00:00:00Z'
+
 /** Viewport point inside a block's text, clear of the gutter control. */
 async function pointIn(preview: Preview, index: number): Promise<{ x: number; y: number }> {
   const rect = await preview.rect(`[data-paragraph-index="${index}"]`)
@@ -188,22 +203,24 @@ describe('E7 double-click selects a block, triple-click opens the original', () 
       () => !(document.getElementById('comment-modal') as HTMLElement).hidden,
       { timeout: 5000 },
     )
-    // And none of the block gestures ran. Stated as "no indexed block is selected"
-    // rather than "nothing is selected": the first press already opened the thread
-    // modal, so the second press lands on the modal and the browser's own word-select
-    // can leave a word highlighted THERE. What req 1.9 promises is that the gutter
-    // control drives itself instead of selecting the block.
-    const blocksInSelection = await preview.page.evaluate(() => {
-      const sel = window.getSelection()
-      if (!sel || sel.rangeCount === 0) return 0
-      const range = sel.getRangeAt(0)
-      return Array.from(document.querySelectorAll('#content [data-paragraph-index]')).filter((b) =>
-        range.intersectsNode(b),
-      ).length
-    })
-    expect(blocksInSelection).toBe(0)
+    // And none of the block gestures ran — with NOTHING highlighted anywhere, not merely
+    // no block. The first press opens the modal, so the second press of the same gesture
+    // lands on the overlay that appeared in front of the marker, where Chromium's own
+    // double-click word-select used to grab the dialog's chrome (the word "Comments"): a
+    // stray highlight the user never asked for, from a gesture aimed at the gutter.
+    expect(await selectionState(preview)).toEqual({ text: '', collapsed: true })
     expect(await preview.hidden('#sel-toolbar')).toBe(true)
     expect((await preview.posted()).filter((m) => m.type === 'openOriginal')).toEqual([])
+
+    // The suppression belongs to the backdrop alone: inside the dialog a comment's text
+    // is still selectable, which is what makes it copyable.
+    const body = 'a stored comment body long enough to drag a selection across'
+    const thread = { comments: [{ id: 'c1', createdAt: STAMP, updatedAt: STAMP, body }] }
+    await preview.send({ type: 'commentThread', paragraphIndex: 1, comments: thread.comments, threads: [thread] })
+    expect(await preview.text('#comment-list .cmt-body')).toBe(body)
+    const dragged = await preview.dragSelect('#comment-list .cmt-body')
+    expect(dragged.trim().length).toBeGreaterThan(0)
+    expect(body).toContain(dragged.trim())
 
     expect(preview.errors()).toEqual([])
   })
@@ -391,19 +408,83 @@ describe('E18 hover translation suppressed by a selection and by the gutter', ()
     expect(preview.errors()).toEqual([])
   })
 
-  // Verified behaviour (probed against this same page): after the selection is cleared
-  // with the pointer still resting on the block, NO `paragraphHover` is posted however
-  // long the dwell lasts — the timer is armed by `mouseover`, which does not re-fire
-  // inside the element the pointer is already in. It resumes on the next leave/re-enter,
-  // which is what the test above asserts.
-  //
-  // Whether that satisfies req 10.14 ("WHEN the selection is cleared, hover translation
-  // SHALL resume unchanged") is a product call, not a test call: a strict reading makes
-  // clearing the selection the trigger, and the dwell required by 7.2 is already
-  // satisfied, so the peek is owed immediately; a lenient reading only promises that the
-  // suppression is lifted for the next hover. Left as .todo rather than guessed at —
-  // asserting either way would be inventing the requirement.
-  it.todo('resumes the peek when the selection is cleared under a resting pointer (req 10.14 — see note)')
+  // req 10.14 promises the peek resumes WHEN THE SELECTION IS CLEARED, and the pointer
+  // does not have to move for that to be the moment: dwelling is already satisfied. The
+  // timer used to be armed only by `mouseover`, which never re-fires inside the element
+  // the pointer is already in, so a drag-select followed by a click-away left the peek
+  // silent forever. The clearing edge itself now re-arms whatever is under the pointer.
+  it('resumes the peek when the selection is cleared under a resting pointer', async () => {
+    preview = await openPreview()
+    await preview.configure()
+    await preview.render(longDoc(40))
+    const peek = await renderMarkdown(CODE_FENCE)
+
+    // Drag inside block 3 and leave the pointer exactly where the drag ended.
+    const selected = await preview.dragSelect('[data-paragraph-index="3"]')
+    expect(selected.trim().length).toBeGreaterThan(0)
+    await preview.clearPosted()
+
+    // Clear it WITHOUT moving the pointer — a click away would move it, and moving is
+    // precisely the thing this scenario must not need.
+    await preview.clearSelection()
+
+    // Nothing re-entered the block, so the clearing edge is the only path that can have
+    // posted this.
+    expect(await preview.waitForPost('paragraphHover')).toEqual({ type: 'paragraphHover', paragraphIndex: 3 })
+    expect(await preview.count('.paragraph-highlight')).toBe(1)
+
+    // "Unchanged" means the whole peek, not just the request: the hovered-block reference
+    // came back with it, so the host's reply paints instead of being dropped as stale.
+    await preview.send({ type: 'showTooltip', paragraphIndex: 3, html: peek.html })
+    expect(await preview.css('#tooltip', 'display')).toBe('block')
+    // Still one-shot — resuming must not turn into a repeating poll.
+    await preview.wait(700)
+    expect((await preview.posted()).filter((m) => m.type === 'paragraphHover')).toEqual([
+      { type: 'paragraphHover', paragraphIndex: 3 },
+    ])
+
+    expect(preview.errors()).toEqual([])
+  })
+
+  it('re-arms nothing when the gutter or an open dialog owns the pointer', async () => {
+    preview = await openPreview()
+    await preview.configure()
+    await preview.render(longDoc(40))
+    await preview.send({ type: 'commentsForBlocks', blocks: [{ paragraphIndex: 4, count: 1 }] })
+
+    // --- the gutter marker keeps the exemption it has under `mouseover`.
+    await preview.dragSelect('[data-paragraph-index="3"]')
+    const icon = (await preview.rect('[data-paragraph-index="4"] > .bctl > .bctl-comment'))!
+    await preview.moveMouse((icon.left + icon.right) / 2, (icon.top + icon.bottom) / 2)
+    await preview.clearPosted()
+    await preview.clearSelection()
+    await preview.wait(900) // the whole hover window, with margin
+    expect((await preview.posted()).filter((m) => m.type === 'paragraphHover')).toEqual([])
+    expect(await preview.count('.paragraph-highlight')).toBe(0)
+
+    // --- a dialog covers the content, so the pointer is not resting on a block at all.
+    const point = await pointIn(preview, 5)
+    await preview.dragSelect('[data-paragraph-index="5"]')
+    await preview.send({ type: 'openEditModal', paragraphIndex: 5, storageText: 'a', targetText: 'b' })
+    await preview.moveMouse(point.x, point.y)
+    expect((await preview.hitTest(point.x, point.y))!.blockIndex).toBeNull()
+    await preview.clearPosted()
+    await preview.clearSelection()
+    await preview.wait(900)
+    expect((await preview.posted()).filter((m) => m.type === 'paragraphHover')).toEqual([])
+
+    // Positive control: with the dialog gone, the identical clear at the identical point
+    // does resume — so both silences above are the suppression, not a dead path.
+    await preview.press('Escape')
+    expect(await preview.hidden('#modal')).toBe(true)
+    await preview.dragSelect('[data-paragraph-index="5"]')
+    await preview.moveMouse(point.x, point.y)
+    await preview.clearPosted()
+    await preview.clearSelection()
+    expect(await preview.waitForPost('paragraphHover')).toEqual({ type: 'paragraphHover', paragraphIndex: 5 })
+
+    expect(preview.errors()).toEqual([])
+  })
 
   it('never arms from the gutter marker, and leaves the block unhighlighted', async () => {
     preview = await openPreview()
@@ -592,6 +673,36 @@ describe('E22 edit modal', () => {
     expect(await preview.hidden('#modal')).toBe(true)
     expect(await preview.posted()).toEqual([{ type: 'cancelParagraphEdit' }])
 
+    expect(preview.errors()).toEqual([])
+  })
+
+  // The dialog hides itself the moment Save is clicked, so a write the host then refuses
+  // would take the user's text with it. The host re-opens the dialog carrying that text
+  // plus the reason; a plain open must still come up clean.
+  it('re-opens carrying the typed text and the reason when the host refused the save', async () => {
+    preview = await openPreview()
+    await preview.configure()
+    await preview.render(SHORT_DOC)
+
+    await preview.send({ type: 'openEditModal', paragraphIndex: 3, storageText: 'a', targetText: 'b' })
+    await preview.click('#modal-save')
+    expect(await preview.hidden('#modal')).toBe(true)
+
+    await preview.send({
+      type: 'openEditModal',
+      paragraphIndex: 3,
+      storageText: 'my edited text',
+      targetText: 'mein Text',
+      error: 'Could not save — the document changed while the dialog was open.',
+    })
+    expect(await preview.hidden('#modal')).toBe(false)
+    expect(await fieldState(preview, '#modal-storage')).toEqual({ value: 'my edited text', disabled: false }) // the work survives
+    expect(await fieldState(preview, '#modal-target')).toEqual({ value: 'mein Text', disabled: false })
+    expect(await preview.text('#modal-error')).toMatch(/could not save/i)
+
+    // A subsequent ordinary open must not inherit the stale reason.
+    await preview.send({ type: 'openEditModal', paragraphIndex: 3, storageText: 'a', targetText: 'b' })
+    expect(await preview.text('#modal-error')).toBe('')
     expect(preview.errors()).toEqual([])
   })
 })

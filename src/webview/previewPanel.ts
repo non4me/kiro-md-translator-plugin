@@ -360,6 +360,20 @@ function cancelHide(): void {
   window.clearTimeout(hideTimer)
 }
 
+/** Highlight `el` and start the dwell that asks the host for its peek. The ONE arming
+ *  path: `mouseover` below and the selection-cleared edge (req 10.14) both go through
+ *  here, so the two can never drift apart. */
+function armHover(el: HTMLElement): void {
+  cancelHide() // returning from the tooltip must not hide it
+  if (hoveredEl && hoveredEl !== el) hoveredEl.classList.remove('paragraph-highlight')
+  el.classList.add('paragraph-highlight') // < 50 ms (req 7.1)
+  hoveredEl = el
+  window.clearTimeout(hoverTimer)
+  hoverTimer = window.setTimeout(() => {
+    post({ type: 'paragraphHover', paragraphIndex: Number(el.dataset.paragraphIndex) })
+  }, HOVER_MS)
+}
+
 function bindHover(): void {
   for (const el of blocks()) {
     el.addEventListener('mouseover', (e) => {
@@ -375,14 +389,7 @@ function bindHover(): void {
         window.clearTimeout(hoverTimer)
         return
       }
-      cancelHide() // returning from the tooltip must not hide it
-      if (hoveredEl && hoveredEl !== el) hoveredEl.classList.remove('paragraph-highlight')
-      el.classList.add('paragraph-highlight') // < 50 ms (req 7.1)
-      hoveredEl = el
-      window.clearTimeout(hoverTimer)
-      hoverTimer = window.setTimeout(() => {
-        post({ type: 'paragraphHover', paragraphIndex: Number(el.dataset.paragraphIndex) })
-      }, HOVER_MS)
+      armHover(el)
     })
     el.addEventListener('mouseleave', () => {
       window.clearTimeout(hoverTimer) // cancel a still-pending show
@@ -655,6 +662,16 @@ function closeCommentModal(): void {
 }
 
 commentClose.addEventListener('click', closeCommentModal)
+// A double-click on the gutter marker opens this modal on its FIRST press, so the second
+// press of the same gesture lands on the overlay that just appeared in front of it — and
+// Chromium's own word-select then highlights whatever dialog chrome is nearest the pointer
+// (measured: the word "Comments"). Suppressed for a press on the BACKDROP only, which is
+// the narrowest cut available: the backdrop carries no text of its own, so a selection
+// started there can only ever be spurious, while everything inside `.box` keeps its native
+// behaviour — a comment's text must stay selectable and copyable, double-click included.
+commentModal.addEventListener('mousedown', (e) => {
+  if (e.target === commentModal) e.preventDefault()
+})
 
 // --- AI Assistant chat dialog (req 4/5) ---------------------------------------
 
@@ -675,6 +692,13 @@ function openAssistantModal(): void {
   assistantInput.value = ''
   assistantApply.hidden = true
   assistantSummary.disabled = true // enabled once the assistant produces its first reply
+  // The header belongs to the session, not to the dialog: `assistantOpen` fills it, and a
+  // failing open (assistant disabled, provider build throws, no provider configured) never
+  // sends that message. Left standing, the PREVIOUS session's fragment and comment count
+  // would sit next to an error about a different selection entirely — reading as though the
+  // assistant had considered comments on text the user never selected (req 4.1).
+  assistantSelection.textContent = ''
+  assistantComments.textContent = ''
   // The dialog opens optimistically, before the host confirms a session. Until
   // `assistantOpen` arrives there is nothing to send to, and an open that fails
   // (no provider, no key) never sends it — so Send must start out dead.
@@ -716,7 +740,10 @@ assistantClose.addEventListener('click', () => {
 // `kiroMdHasSelection` gates the item's `when` clause; `kiroMdSelection` is the
 // text the command excludes. No host round-trip is needed — the same context that
 // shows the item also carries the selection to the command.
-let lastSelectionText = ''
+// `null`, not '', so the seed at the bottom of this block actually writes: the guard below
+// exists to skip REDUNDANT writes on caret-only changes, and the very first write is never
+// redundant — until it runs there is no attribute at all.
+let lastSelectionText: string | null = null
 function updateSelectionContext(): void {
   const active = document.activeElement
   // Leave form fields to their native editing menu (Cut/Copy/Paste).
@@ -732,7 +759,16 @@ function updateSelectionContext(): void {
   })
 }
 document.addEventListener('selectionchange', updateSelectionContext)
-updateSelectionContext() // seed an initial (empty) context
+// Seed the empty context at boot. Kept rather than dropped: an unset context key is falsy,
+// so the menu item would stay hidden without any attribute at all — but that relies on how
+// VS Code evaluates a `when` clause for a key nobody contributes, while publishing an
+// explicit `false` is exactly what the clause is written against and is observable from
+// here. It also makes the attribute's PRESENCE mean "this preview publishes a selection
+// context" from the first right-click onwards, which is the discriminator
+// ActivationController.excludeSelection uses to prefer the webview's selection over a
+// possibly-stale background text editor — instead of that only becoming true after the
+// user's first selection.
+updateSelectionContext()
 
 // --- suppress the hover translation/peek while a selection is live (req 10.14) --
 // A drag-select leaves the pointer resting over a block, which would otherwise arm the
@@ -743,8 +779,44 @@ function selectionActive(): boolean {
   const sel = window.getSelection()
   return !!sel && !sel.isCollapsed && (sel.toString() ?? '').trim().length > 0
 }
+
+// The pointer's last known viewport position. A pointer that stops moving produces no
+// further events, so this is the only way to answer "what is it resting on right now?"
+// when something OTHER than a pointer move (a cleared selection) has to consult it.
+let pointerX = -1
+let pointerY = -1
+document.addEventListener('mousemove', (e) => {
+  pointerX = e.clientX
+  pointerY = e.clientY
+})
+
+/** Re-arm the hover peek for whatever block the pointer is resting on, on the edge where
+ *  a selection is cleared (req 10.14: "WHEN the selection is cleared, hover translation
+ *  SHALL resume unchanged"). Arming lives in `mouseover`, which does NOT re-fire while the
+ *  pointer sits still — so without this a drag-select followed by a click-away left the
+ *  peek silent forever, however long the dwell continued.
+ *
+ *  The hit test IS the suppression list, exactly as it is for a real `mouseover`: a modal,
+ *  the find bar and the cursor toolbar all paint above the content, so `elementFromPoint`
+ *  returns THEM and no block is found. The gutter and the open peek are excluded
+ *  explicitly — `.bctl` is a child of the block (as in `bindHover`), and the peek renders a
+ *  whole block, `data-paragraph-index` and all, so `closest` would otherwise match inside
+ *  the tooltip. */
+function rearmHoverUnderPointer(): void {
+  if (bilingual) return // the two-pane view binds no hover peek at all (req 10.5)
+  if (pointerX < 0) return // the pointer has never been over this page
+  const under = document.elementFromPoint(pointerX, pointerY)
+  if (!under || under.closest('.bctl')) return
+  const el = under.closest<HTMLElement>('[data-paragraph-index]')
+  if (el && content.contains(el)) armHover(el)
+}
+
+let selectionWasLive = false
 document.addEventListener('selectionchange', () => {
-  if (selectionActive()) hideTooltipNow() // also clears hoveredEl, so a late reply can't reopen it
+  const live = selectionActive()
+  if (live) hideTooltipNow() // also clears hoveredEl, so a late reply can't reopen it
+  else if (selectionWasLive) rearmHoverUnderPointer() // the clearing EDGE, not every caret move
+  selectionWasLive = live
 })
 
 // --- cursor toolbar (multi-block selection, req 10.15) -----------------------
@@ -1109,7 +1181,9 @@ window.addEventListener('message', (event: MessageEvent) => {
       editLastIndex = (msg.lastIndex ?? msg.paragraphIndex) as number
       modalStorage.value = String(msg.storageText)
       modalTarget.value = String(msg.targetText)
-      modalError.textContent = ''
+      // Set when the host is RE-opening the dialog because the save was refused: the
+      // text above is what the user had typed, and this says why it is back.
+      modalError.textContent = String(msg.error ?? '')
       modal.hidden = false
       break
     case 'editModalSyncStart':
