@@ -201,7 +201,6 @@ export type WebviewMessage =
   | { type: 'openOriginal' }
   | { type: 'translateRequest' }
   | { type: 'paragraphHover'; paragraphIndex: number }
-  | { type: 'paragraphHoverEnd'; paragraphIndex: number }
   | { type: 'editParagraph'; paragraphIndex: number; lastIndex?: number }
   | { type: 'saveParagraph'; paragraphIndex: number; lastIndex?: number; storageText: string; targetText: string }
   | { type: 'modalSyncRequest'; field: 'storage' | 'target'; text: string }
@@ -240,7 +239,6 @@ export type ExtensionMessage =
   | { type: 'showTooltip'; paragraphIndex: number; html: string }
   | { type: 'tooltipLoading'; paragraphIndex: number }
   | { type: 'tooltipError'; paragraphIndex: number; message: string }
-  | { type: 'hideTooltip' }
   /** Opens the paragraph-edit dialog prefilled. `error` is set when the dialog is being
    *  RE-opened because the save was rejected: it carries the text the user had typed, so
    *  their work is restored rather than lost with the closed dialog. */

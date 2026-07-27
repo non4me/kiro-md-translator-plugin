@@ -274,9 +274,6 @@ export class PreviewController implements IPreviewController {
       case 'paragraphHover':
         void this.handleHover(message.paragraphIndex)
         break
-      case 'paragraphHoverEnd':
-        this.deps.post({ type: 'hideTooltip' })
-        break
       case 'displayModeChanged':
         // The webview toggled Translate<->Original locally (cached HTML, no API);
         // keep the host's hover direction (req 7.3/7.4) in sync.

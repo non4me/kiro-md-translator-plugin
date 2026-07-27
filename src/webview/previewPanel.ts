@@ -23,6 +23,15 @@ const modal = document.getElementById('modal') as HTMLElement
 const modalStorage = document.getElementById('modal-storage') as HTMLTextAreaElement
 const modalTarget = document.getElementById('modal-target') as HTMLTextAreaElement
 const modalError = document.getElementById('modal-error') as HTMLElement
+const spinStorage = document.getElementById('spin-storage') as HTMLElement
+const spinTarget = document.getElementById('spin-target') as HTMLElement
+
+/** The field being auto-synced, plus its busy indicator (req 7.11). */
+function syncTarget(field: unknown): { field: HTMLTextAreaElement; spinner: HTMLElement } {
+  return field === 'storage'
+    ? { field: modalStorage, spinner: spinStorage }
+    : { field: modalTarget, spinner: spinTarget }
+}
 const modalCancel = document.getElementById('modal-cancel') as HTMLButtonElement
 const modalSave = document.getElementById('modal-save') as HTMLButtonElement
 const commentModal = document.getElementById('comment-modal') as HTMLElement
@@ -1071,9 +1080,6 @@ window.addEventListener('message', (event: MessageEvent) => {
         openTooltip(hoveredEl, textNode('div', String(msg.message)))
       }
       break
-    case 'hideTooltip':
-      hideTooltipNow()
-      break
     case 'setCodeTheme': {
       // Swap the highlight theme stylesheet in place — no re-render (req 12).
       const themeEl = document.getElementById('code-theme')
@@ -1216,20 +1222,31 @@ window.addEventListener('message', (event: MessageEvent) => {
       // Set when the host is RE-opening the dialog because the save was refused: the
       // text above is what the user had typed, and this says why it is back.
       modalError.textContent = String(msg.error ?? '')
+      // A re-open must not inherit a spinner (or a lock) left by the previous session's
+      // in-flight sync, whose reply will never arrive for this dialog.
+      spinStorage.hidden = true
+      spinTarget.hidden = true
+      modalStorage.disabled = false
+      modalTarget.disabled = false
       modal.hidden = false
       break
-    case 'editModalSyncStart':
-      (msg.field === 'storage' ? modalStorage : modalTarget).disabled = true
+    case 'editModalSyncStart': {
+      const { field, spinner } = syncTarget(msg.field)
+      field.disabled = true
+      spinner.hidden = false
       break
+    }
     case 'editModalSyncComplete': {
-      const field = msg.field === 'storage' ? modalStorage : modalTarget
+      const { field, spinner } = syncTarget(msg.field)
       field.value = String(msg.text)
       field.disabled = false
+      spinner.hidden = true
       break
     }
     case 'editModalSyncError': {
-      const field = msg.field === 'storage' ? modalStorage : modalTarget
+      const { field, spinner } = syncTarget(msg.field)
       field.disabled = false
+      spinner.hidden = true
       modalError.textContent = String(msg.message)
       break
     }

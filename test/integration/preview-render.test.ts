@@ -448,9 +448,11 @@ describe('J13: hovering a translated preview costs nothing and peeks at the righ
     expect(rowText).toContain('build')
     expect(rowText).toContain('compiles')
 
-    // Req 7.7: leaving the block hides the tooltip.
-    controller.onWebviewMessage({ type: 'paragraphHoverEnd', paragraphIndex: rowIndex })
-    expect(posted.some((m) => m.type === 'hideTooltip')).toBe(true)
+    // Req 7.7 (leaving the block hides the tooltip) used to be asserted here by feeding
+    // the host a `paragraphHoverEnd` message. The webview never sent one — it hides the
+    // peek locally on `mouseleave`, with no host round-trip — so the assertion only ever
+    // exercised a handler no real flow reached. The variant is gone; the promise is
+    // covered where it actually lives, in the webview e2e layer (E17).
     controller.dispose()
   })
 })

@@ -106,6 +106,14 @@ export function getPreviewHtml(
       padding: 1rem; border-radius: 6px; width: min(40rem, 90vw); display: flex; flex-direction: column;
       gap: .5rem; }
     textarea { width: 100%; min-height: 4rem; }
+    /* Auto-sync indicator (req 7.11): the field is disabled while its translation is in
+       flight, and this says WHY rather than leaving it looking merely dead. */
+    .sync-spin { display: inline-block; width: .7em; height: .7em; margin-left: .4em;
+      vertical-align: -.05em; border: 2px solid currentColor; border-right-color: transparent;
+      border-radius: 50%; opacity: .7; animation: sync-spin .8s linear infinite; }
+    .sync-spin[hidden] { display: none; }
+    @keyframes sync-spin { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .sync-spin { animation: none; } }
     /* AI Assistant dialog (req 4/5): the selected block is shown read-only and capped so a
        long selection does not push the chat log off screen (req 4.2). */
     #assistant-selection { max-height: 10em; overflow-y: auto; white-space: pre-wrap;
@@ -234,8 +242,8 @@ export function getPreviewHtml(
   <div id="modal" role="dialog" aria-modal="true" aria-label="Edit paragraph" hidden>
     <div class="box">
       <strong>Edit paragraph</strong>
-      <label>Storage <textarea id="modal-storage"></textarea></label>
-      <label>Target <textarea id="modal-target"></textarea></label>
+      <label>Storage <span class="sync-spin" id="spin-storage" hidden></span><textarea id="modal-storage"></textarea></label>
+      <label>Target <span class="sync-spin" id="spin-target" hidden></span><textarea id="modal-target"></textarea></label>
       <div id="modal-error" role="alert"></div>
       <div style="display:flex; gap:.5rem; justify-content:flex-end;">
         <button id="modal-cancel">Cancel</button>

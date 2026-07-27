@@ -639,6 +639,11 @@ describe('E22 edit modal', () => {
 
     await preview.send({ type: 'editModalSyncStart', field: 'storage' })
     expect(await fieldState(preview, '#modal-storage')).toEqual({ value: 'source text', disabled: true })
+    // req 7.11 says the field is disabled WITH a spinner. Disabling alone leaves it
+    // looking merely dead; the indicator is what says a request is in flight — and it
+    // belongs to the synced field only.
+    expect(await preview.hidden('#spin-storage')).toBe(false)
+    expect(await preview.hidden('#spin-target')).toBe(true)
 
     // req 7.12: the error shows under the modal AND the field keeps its last good value
     // and becomes editable again — a permanently disabled field would strand the edit.
@@ -648,6 +653,7 @@ describe('E22 edit modal', () => {
       message: 'Failed to load the translation',
     })
     expect(await fieldState(preview, '#modal-storage')).toEqual({ value: 'source text', disabled: false })
+    expect(await preview.hidden('#spin-storage')).toBe(true) // and the indicator stops
     expect(await preview.text('#modal-error')).toBe('Failed to load the translation')
     expect(await preview.hidden('#modal')).toBe(false) // an error does not close the edit
 
