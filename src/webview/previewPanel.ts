@@ -1302,6 +1302,9 @@ function highlightMatches(): void {
     const needle = query.toLowerCase()
     const walker = document.createTreeWalker(content, NodeFilter.SHOW_TEXT)
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+      // The gutter control lives inside the block; its comment-count badge is UI,
+      // not document text, so searching for a digit must not match it.
+      if (node.parentElement?.closest('.bctl')) continue
       const hay = (node.nodeValue ?? '').toLowerCase()
       for (let i = hay.indexOf(needle); i !== -1; i = hay.indexOf(needle, i + needle.length)) {
         const r = document.createRange()
