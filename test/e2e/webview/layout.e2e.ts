@@ -247,15 +247,32 @@ describe('E2 gutter comment marker geometry', () => {
     expect(badged.map((m) => ({ index: m.index, text: m.badgeText }))).toEqual([{ index: 3, text: '3' }])
     expect(badged[0].badge!.right).toBeLessThanOrEqual(badged[0].block.left)
 
-    // The control spans exactly its own block's height and stops there. Both
-    // halves matter: taller than the block and it hangs into the next list item,
-    // where — every block being position:relative — the later sibling paints on
-    // top and the earlier marker becomes unclickable.
+    // The control spans exactly the rows the block OWNS, and stops there. Both halves
+    // matter: taller and it hangs into the next list item, where — every block being
+    // position:relative — the later sibling paints on top and the earlier marker becomes
+    // unclickable. "Owns" is the block's full height except for a list item that contains
+    // a nested one: the parent's control is appended last and would otherwise paint over
+    // the nested item's own marker, so it stops at the nested item's top.
+    const ownHeights = await preview.page.evaluate(() =>
+      Array.from(document.querySelectorAll<HTMLElement>('[data-paragraph-index]'))
+        .filter((el) => el.querySelector(':scope > .bctl'))
+        .map((el) => {
+          const nested = el.querySelector('li[data-paragraph-index]')
+          const top = el.getBoundingClientRect().top
+          return {
+            index: Number(el.dataset.paragraphIndex),
+            own: nested ? nested.getBoundingClientRect().top - top : el.getBoundingClientRect().height,
+          }
+        }),
+    )
+    const ownByIndex = new Map(ownHeights.map((o) => [o.index, o.own]))
     expect(
       markers
-        .filter((m) => Math.abs(m.control!.height - m.block.height) > 1)
-        .map((m) => ({ index: m.index, control: m.control!.height, block: m.block.height })),
+        .filter((m) => Math.abs(m.control!.height - (ownByIndex.get(m.index) ?? m.block.height)) > 1)
+        .map((m) => ({ index: m.index, control: m.control!.height, own: ownByIndex.get(m.index) })),
     ).toEqual([])
+    // The shrink is real for at least one block, or the clause above is vacuous.
+    expect(ownHeights.some((o) => o.own < (markers.find((m) => m.index === o.index)?.block.height ?? 0) - 1)).toBe(true)
     expect(
       markers
         .filter((m) => m.nextBlockTop !== null && m.control!.bottom > m.nextBlockTop + 0.5)
@@ -334,16 +351,82 @@ describe('E2 gutter comment marker geometry', () => {
     expect(preview.errors()).toEqual([])
   })
 
-  // Measured while writing the sweep above: in GUTTER_DOC the nested `- nested
-  // item` is `data-paragraph-index="9"` with its own lineMap entry, yet it owns
-  // no `.bctl` at all — `drawBlockControls` skips every block whose ancestor is
-  // also indexed. So `commentsForBlocks` can carry a count for it while req 11.6
-  // ("a block that has comments is marked with a permanently visible icon") has
-  // nowhere to paint, and the thread is unreachable from the gutter. Req 10.8
-  // lists list items among the icon-bearing blocks and excepts only a LOOSE
-  // list's inner `<p>`; whether a nested `<li>` falls under that exception is a
-  // product decision, so this stays open rather than being settled from the code.
-  it.todo('shows a marker for a commented NESTED list item (req 10.8 vs 11.6 — undecided)')
+  // RESOLVED 2026-07-27. `drawBlockControls` skipped every block whose ancestor was also
+  // indexed. That rule exists for a loose list's inner <p> (and a <pre>/<tr> inside a list
+  // item), where the enclosing block already carries the marker — but it also caught a
+  // NESTED <li>, which is a list item in its own right with its own index and its own
+  // lineMap range. So a comment could be created on it and then had nowhere to be marked:
+  // req 11.6 ("a block that has comments is marked with a permanently visible icon") had no
+  // paint target, and the thread was unreachable from the gutter. Req 10.8 lists list items
+  // among the icon-bearing blocks and excepts only a loose list's inner <p>, so the nested
+  // <li> is now included and the exception is scoped to non-<li> descendants.
+  it('marks a commented nested list item and routes its marker to its own thread', async () => {
+    preview = await openPreview()
+    await preview.configure()
+    await preview.render(GUTTER_DOC)
+
+    const indices = await preview.page.evaluate(() => {
+      const byText = (text: string) =>
+        Array.from(document.querySelectorAll<HTMLElement>('[data-paragraph-index]')).find(
+          (el) => (el.textContent ?? '').trim().startsWith(text),
+        )
+      const outer = byText('outer item')
+      const nested = byText('nested item')
+      return {
+        outer: Number(outer?.dataset.paragraphIndex ?? -1),
+        nested: Number(nested?.dataset.paragraphIndex ?? -1),
+        // The fixture must really nest, or this measures nothing.
+        isNested: !!(nested && nested.parentElement?.closest('[data-paragraph-index]') === outer),
+      }
+    })
+    expect(indices.isNested).toBe(true)
+    expect(indices.nested).not.toBe(indices.outer)
+
+    await preview.send({
+      type: 'commentsForBlocks',
+      blocks: [{ paragraphIndex: indices.nested, count: 1 }],
+    })
+    await preview.drain()
+
+    const nestedSel = `[data-paragraph-index="${indices.nested}"]`
+    const outerSel = `[data-paragraph-index="${indices.outer}"]`
+
+    // The nested item owns a marker of its own, and it is the marked one — the outer
+    // item has no comments, so its icon stays in the hover-only state.
+    expect(await preview.count(`${nestedSel} > .bctl > .bctl-comment`)).toBe(1)
+    expect(await preview.classList(`${nestedSel} > .bctl > .bctl-comment`)).toContain('has')
+    expect(await preview.classList(`${outerSel} > .bctl > .bctl-comment`)).not.toContain('has')
+
+    // It lines up in the same gutter column as everything else, despite being indented
+    // one level further than its parent.
+    const nestedBtn = await preview.rect(`${nestedSel} > .bctl > .bctl-comment`)
+    const outerBtn = await preview.rect(`${outerSel} > .bctl > .bctl-comment`)
+    expect(nestedBtn).not.toBeNull()
+    expect(Math.abs(nestedBtn!.left - outerBtn!.left)).toBeLessThanOrEqual(1)
+    // …and lower down the page than its parent's, so the two never occupy one point.
+    expect(nestedBtn!.top).toBeGreaterThan(outerBtn!.top)
+
+    // The hit test at the nested marker's own centre reaches the NESTED button, not the
+    // parent's full-height gutter bridge that overlaps it.
+    const hit = await preview.hitTest(
+      nestedBtn!.left + nestedBtn!.width / 2,
+      nestedBtn!.top + nestedBtn!.height / 2,
+    )
+    expect(hit?.inButton).toBe(true)
+    expect(hit?.blockIndex).toBe(indices.nested)
+
+    // And a real click opens the nested item's thread — the parent's index appearing
+    // here would be the regression this rule was guarding against.
+    await preview.clearPosted()
+    await preview.clickAt(nestedBtn!.left + nestedBtn!.width / 2, nestedBtn!.top + nestedBtn!.height / 2)
+    expect(await preview.waitForPost('requestCommentThread')).toEqual({
+      type: 'requestCommentThread',
+      paragraphIndex: indices.nested,
+    })
+    expect((await preview.posted()).every((m) => m.paragraphIndex === indices.nested)).toBe(true)
+
+    expect(preview.errors()).toEqual([])
+  })
 })
 
 // Feature: sticky header stacking (CHANGELOG 0.5.6), Scenario E3: the header

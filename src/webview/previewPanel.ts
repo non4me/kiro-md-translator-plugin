@@ -225,9 +225,14 @@ selAi.appendChild(icon(AI_ICON))
  *  messages; works in BOTH single and bilingual view. */
 function drawBlockControls(): void {
   for (const el of blocks()) {
-    // Skip a block nested inside ANOTHER indexed block (a loose list's inner <p> — its
-    // <li> already carries the marker) so the two don't draw an overlapping duplicate.
-    if (el.parentElement?.closest('[data-paragraph-index]')) continue
+    // Skip a block nested inside ANOTHER indexed block — a loose list's inner <p>, or a
+    // <pre>/<tr> inside a list item — because the enclosing block already carries the
+    // marker and the two would draw an overlapping duplicate.
+    // A nested <li> is the exception: it is a list item in its own right, with its own
+    // index and its own lineMap range, so it can hold comments — and req 11.6 requires
+    // those to be reachable from a permanently visible marker. Its own `.bctl` paints
+    // after the ancestor's (it is a descendant), so it wins the hit test on its own row.
+    if (el.tagName !== 'LI' && el.parentElement?.closest('[data-paragraph-index]')) continue
     if (el.querySelector(':scope > .bctl')) continue // fresh render, but stay idempotent
     const idx = Number(el.dataset.paragraphIndex)
 
@@ -270,6 +275,17 @@ function drawBlockControls(): void {
       // `.bctl` is a DOM descendant of the block, so anywhere inside it still counts as
       // hovering the block. Never narrower than the icons themselves (min-width in CSS).
       ctl.style.width = `${Math.max(0, indent - GUTTER_INSET_PX)}px`
+    }
+    // A list item that contains a nested one spans its whole sub-list, and its `.bctl`
+    // is `height: 100%` — appended LAST, so it paints over the nested item's own control
+    // and swallows the click. Stop the bridge where this block's own text ends, i.e. at
+    // the top of the first nested list item. Only <li> descendants matter: everything
+    // else nested (a loose list's inner <p>, a <pre> in a list item) draws no control of
+    // its own, and shrinking to those would collapse the bridge to nothing.
+    const nestedItem = el.querySelector('li[data-paragraph-index]')
+    if (nestedItem) {
+      const own = nestedItem.getBoundingClientRect().top - el.getBoundingClientRect().top
+      if (own > 0) ctl.style.height = `${own}px`
     }
     el.appendChild(ctl)
   }
