@@ -22,7 +22,7 @@ the **Storage language** (default English); the **Target language** is an in-mem
 - **Persistent translation memory** — translations are remembered across IDE sessions, so reopening a file does not re-spend API quota on already-translated text.
 - **Comments** — annotate a whole block, a selected text fragment, or a span across several blocks, without touching the `.md`. A toolbar by the selection offers **Edit**, **Comment** and **Ask AI**; comments re-anchor to their text as the original is edited. Keep them in a sidecar file, inline in the `.md`, or as local drafts.
 - Hover any block to see the reverse translation; edit a paragraph (original ↔ translation auto-sync) and save it back.
-- Export the translated document as `{name}.{lang}.md` — run **"Save Translation"** from the Command Palette (this is the one command without the `Markdown Translator:` prefix) and pick where to save. A Target language must be set.
+- Export the translated document as `{name}.{lang}.md` — run **"Markdown Translator: Save Translation"** from the Command Palette and pick where to save. A Target language must be set; without one the command says so instead of doing nothing.
 - Translate and Bilingual are also icons in the editor tab title bar and Command Palette commands — **"Markdown Translator: Toggle Translation"** and **"Markdown Translator: Toggle Bilingual View"** — shown only for the active preview and hidden while a required setting is missing.
 - Two-tier cache: an in-session LRU (50 entries) over the persistent memory; code, inline code and URLs are never sent to the translation API (only the prose of code comments is, when present).
 - API keys stored only in the IDE SecretStorage / OS keychain, per provider (never in workspace config).
@@ -135,9 +135,9 @@ section; while it is off the Ask AI button is hidden and no chat request is ever
 | **Google Gemini** | required | **Model** defaults to `gemini-1.5-flash`. |
 | **GitHub Copilot Chat** | not needed | Real VS Code only; uses the Copilot you already have. **Model** is a Copilot model family, `claude-sonnet-4.5` by default, falling back to any Copilot model your account can use. |
 
-If you never pick one, the effective default depends on the editor: real **VS Code** uses GitHub
-Copilot Chat, every other host (Kiro, Cursor, VSCodium…) uses Ollama — even though the settings page
-shows `ollama` as the declared default. Keys are entered with **"Markdown Translator: Set AI Assistant
+**Provider** defaults to `auto`, which means: real **VS Code** uses GitHub Copilot Chat, every other
+host (Kiro, Cursor, VSCodium…) uses Ollama. Pick a provider explicitly and that choice always wins.
+Keys are entered with **"Markdown Translator: Set AI Assistant
 API Key"** and verified with **"Markdown Translator: Test AI Assistant Connection"** (both are also
 links in the Provider description). AI Assistant keys live in the OS keychain, separate from the
 translation keys. Two more settings: **System Prompt** (empty uses the built-in documentation-assistant

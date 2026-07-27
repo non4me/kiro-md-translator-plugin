@@ -41,6 +41,19 @@ it, have it rewrite a fragment, or keep the conversation as a comment.
 
 - **The selection toolbar now has three actions** — Edit, Comment and Ask AI. Ask AI appears only
   while the AI Assistant is enabled in settings, so nothing changes if you do not use it.
+- **The export command is now called "Markdown Translator: Save Translation"** — it was the only
+  command without the prefix, so typing the extension's name in the Command Palette did not find
+  it. Without a Target language it now tells you what is missing instead of doing nothing at all.
+- **The AI Assistant provider setting has an explicit `auto` option, and it is the default.** The
+  settings page used to show `ollama` as the default while VS Code actually chose GitHub Copilot
+  Chat. `auto` is that behaviour, written down: Copilot in VS Code, Ollama in other editors. An
+  explicit provider still wins, and nothing changes for anyone who already picked one.
+- **Translating a single block no longer sends its Markdown to the provider.** Hovering a block
+  and the edit dialog's live sync used to hand the translation service the raw block — link
+  addresses, image paths, inline code and every marker along with the words. Only the prose
+  travels now, matching what a full-document translation has always done. Two consequences you may
+  notice: translations are more accurate, and a block edit costs a smaller request because it
+  reuses what the document translation already cached.
 
 ### Fixed
 
@@ -73,6 +86,18 @@ it, have it rewrite a fragment, or keep the conversation as a comment.
   comment, the small count badge in the margin was treated as part of the text: commenting across
   several blocks captured the digit into the saved quote, and searching for that digit reported a
   match on the badge.
+- **A rejected save no longer loses your edit.** If the document changed while the edit dialog was
+  open, the write was refused — but the dialog had already closed and the preview redrew as though
+  the edit had been saved. The dialog now comes back with your text and says what happened.
+- **A summary that cannot be stored is no longer reported as saved.** If the assistant returned an
+  empty summary, or the block it belonged to was gone, Save Summary closed the dialog and
+  discarded the conversation without writing anything. It now says so and leaves the chat open.
+- **The hover peek renders a table row as a table**, instead of a line of literal `|` characters.
+- **The Ask AI dialog no longer shows the previous fragment** in its header when opening fails.
+- **Hover translation resumes after you clear a selection** without having to move the pointer away
+  and back.
+- **Double-clicking the comment marker no longer leaves a word highlighted** inside the dialog it
+  opens.
 
 ## [0.7.0] — 2026-07-13
 
@@ -482,8 +507,13 @@ translation of code comments, a draft comment store, and a reworked selection/cl
 
 ### Removed
 
-- Custom settings webview (`SettingsWebviewProvider`, `settingsPage`, `getSettingsHtml`), the
-  form-validation module, and the `vscode.l10n` ru/en bundles.
+- Custom settings webview (`SettingsWebviewProvider`, `settingsPage`, `getSettingsHtml`) and the
+  form-validation module.
+  <!-- This entry also claimed the vscode.l10n ru/en bundles were removed here. They never
+       existed: no l10n/ directory and no "l10n" manifest key has ever been present. Corrected
+       in 0.8.0, when localization was formally withdrawn — the UI is English-only. -->
+
+
 
 [0.2.0]: #020--2026-07-02
 
@@ -509,7 +539,10 @@ Initial implementation of the spec
 - Settings webview: provider/API-key/endpoint/language/mode, "Test connection",
   empty-key and non-https-endpoint save gates, provider-switch language check, custom-endpoint
   consent. API key persisted only in SecretStorage.
-- Localization via `vscode.l10n` with ru / en bundles.
+- A `vscode.l10n` formatting funnel for user-facing strings.
+  <!-- This entry originally read "Localization via vscode.l10n with ru / en bundles". The
+       funnel shipped; the bundles never did, and no locale catalog has existed in any
+       release. Corrected in 0.8.0, which withdrew localization: the UI is English-only. -->
 - Memory monitor over plugin-owned structures (warn above 150 MB).
 
 ### Tooling

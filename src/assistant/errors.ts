@@ -2,9 +2,11 @@ import { TranslatorError } from '../types'
 import { t } from '../l10n'
 
 /**
- * Map any thrown error into the localized, user-facing AI-Assistant message
- * required by req 17. Single point of truth so every catch site (the session
- * stream, provider build, apply, summary-save) emits identical wording.
+ * Map any thrown error into the user-facing AI-Assistant message required by
+ * req 17. Single point of truth so every catch site (the session stream, provider
+ * build, apply, summary-save) emits identical wording. The UI is English-only —
+ * req 8 is withdrawn and no catalog ships — so `t()` here is a formatter, not a
+ * translation lookup.
  *
  * - Transport failures (HTTP, timeout, empty body, bare `fetch` rejects) →
  *   `Connection failed: {detail}` (req 17.5).
