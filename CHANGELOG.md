@@ -98,6 +98,9 @@ it, have it rewrite a fragment, or keep the conversation as a comment.
   and back.
 - **Double-clicking the comment marker no longer leaves a word highlighted** inside the dialog it
   opens.
+- **The edit dialog says when it is waiting for a translation.** While one field is being
+  translated into the other, the field is locked — and now shows a small spinner, instead of just
+  going grey and looking broken.
 - **A comment on a nested list item can be found again.** Nested items never got the margin
   marker, so a comment placed on one was saved and highlighted but could not be opened from the
   margin. They are marked now, and the marker belongs to the nested item rather than its parent.
