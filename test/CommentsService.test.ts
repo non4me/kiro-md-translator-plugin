@@ -53,14 +53,48 @@ describe('sidecar (de)serialization', () => {
       updatedAt: fc.constant('2026-07-04T00:00:00Z'),
       body: fc.string({ minLength: 1 }),
     })
+    // A fragment quote must be non-empty: an empty one cannot be located in any
+    // text, so the parser deliberately drops it (and the thread degrades to the
+    // whole block). Generating '' here would assert a round-trip the format does
+    // not promise.
+    const genFragment = fc.record({
+      quote: fc.string({ minLength: 1 }),
+      prefix: fc.string(),
+      suffix: fc.string(),
+      translated: fc.boolean(),
+    })
+    // The generator used to emit ONLY the five plain fields, which is precisely why
+    // this property stayed green while `parseCommentsFile` silently dropped every
+    // `fragment` and `end` — a fragment comment and a multi-block span both came
+    // back as plain block comments after a reload. A round-trip property can only
+    // see the fields its generator produces.
     const genThread = fc.record({
-      anchor: fc.record({
-        quote: fc.string(),
-        prefix: fc.string(),
-        suffix: fc.string(),
-        hintLine: fc.nat(),
-        quoteHash: fc.string(),
-      }),
+      anchor: fc
+        .record({
+          quote: fc.string(),
+          prefix: fc.string(),
+          suffix: fc.string(),
+          hintLine: fc.nat(),
+          quoteHash: fc.string(),
+          fragment: fc.option(genFragment, { nil: undefined }),
+          end: fc.option(
+            fc.record({
+              quote: fc.string({ minLength: 1 }),
+              prefix: fc.string(),
+              suffix: fc.string(),
+              hintLine: fc.nat(),
+              quoteHash: fc.string(),
+              fragment: genFragment,
+            }),
+            { nil: undefined },
+          ),
+        })
+        // Absent optionals must stay ABSENT, not present-and-undefined: the file is
+        // JSON, and toEqual would otherwise compare {fragment: undefined} to {}.
+        .map((a) => {
+          const { fragment, end, ...rest } = a
+          return { ...rest, ...(fragment ? { fragment } : {}), ...(end ? { end } : {}) }
+        }),
       orphaned: fc.boolean(),
       comments: fc.array(genComment, { minLength: 1, maxLength: 4 }),
     })
@@ -74,6 +108,67 @@ describe('sidecar (de)serialization', () => {
         expect(parseCommentsFile(serializeCommentsFile(file as CommentsFile))).toEqual(file)
       }),
     )
+  })
+
+  // Explicit trap table for the fields the property above was blind to until now.
+  // These are examples, not a property, on purpose: the question "which anchor
+  // fields survive a reload" is a fixed list, and a generator can under-sample it.
+  it('a reload keeps the fragment and the multi-block span end', () => {
+    const comments = [{ id: 'c1', body: 'note', createdAt: 'T', updatedAt: 'T' }]
+    const file = {
+      version: 1,
+      docHash: 'd',
+      threads: [
+        {
+          anchor: {
+            quote: 'The widget does X.',
+            prefix: '',
+            suffix: '',
+            hintLine: 3,
+            quoteHash: 'h1',
+            fragment: { quote: 'widget', prefix: 'The ', suffix: ' does', translated: true },
+            end: {
+              quote: 'Another block.',
+              prefix: '',
+              suffix: '',
+              hintLine: 9,
+              quoteHash: 'h2',
+              fragment: { quote: 'Another', prefix: '', suffix: ' block' },
+            },
+          },
+          orphaned: false,
+          comments,
+        },
+      ],
+    } as unknown as CommentsFile
+
+    const reloaded = parseCommentsFile(serializeCommentsFile(file))
+    const anchor = reloaded.threads[0].anchor
+    // Without these two the 0.7.0 headline feature silently degrades on restart:
+    // the highlight spreads to the whole block and a span collapses to its first block.
+    expect(anchor.fragment).toEqual({ quote: 'widget', prefix: 'The ', suffix: ' does', translated: true })
+    expect(anchor.end?.fragment.quote).toBe('Another')
+    expect(anchor.end?.hintLine).toBe(9)
+    expect(serializeCommentsFile(reloaded)).toBe(serializeCommentsFile(file)) // byte-stable
+  })
+
+  it('an untrusted fragment/end is dropped, degrading the thread rather than poisoning it', () => {
+    const raw = JSON.stringify({
+      version: 1,
+      threads: [
+        {
+          // fragment with no quote, and an end whose fragment is missing entirely:
+          // both unusable, and both would crash the re-anchoring math if trusted.
+          anchor: { quote: 'q', fragment: { prefix: 7 }, end: { quote: 'e' } },
+          comments: [{ id: 'c1', body: 'b', createdAt: 'T', updatedAt: 'T' }],
+        },
+      ],
+    })
+    const anchor = parseCommentsFile(raw).threads[0].anchor
+    expect(anchor.fragment).toBeUndefined()
+    expect(anchor.end).toBeUndefined()
+    expect(anchor.quote).toBe('q') // the comment itself survives as a block comment
+    expect(parseCommentsFile(raw).threads[0].comments).toHaveLength(1)
   })
 
   it('parse tolerates malformed / empty input (never throws)', () => {

@@ -4,7 +4,7 @@
  * them without a circular import. Pure JSON/URI helpers — no anchoring math here.
  */
 import * as vscode from 'vscode'
-import type { Comment, CommentThread, CommentsFile } from './types'
+import type { Comment, CommentThread, CommentsFile, FragmentAnchor, SpanEnd } from './types'
 
 const SIDE_SUFFIX = '.comments.json'
 export const VERSION = 1
@@ -73,13 +73,54 @@ export function serializeCommentsFile(data: CommentsFile): string {
   return JSON.stringify(data, null, 2)
 }
 
+/** Coerce a fragment anchor, or drop it. A fragment with no quote cannot be
+ *  located in any text, so it is not a fragment — dropping it degrades the thread
+ *  to a whole-block comment, which is the safe direction (the comment survives). */
+function normalizeFragment(f: unknown): FragmentAnchor | undefined {
+  if (typeof f !== 'object' || f === null) return undefined
+  const o = f as Record<string, unknown>
+  if (typeof o.quote !== 'string' || o.quote === '') return undefined
+  return {
+    quote: o.quote,
+    prefix: typeof o.prefix === 'string' ? o.prefix : '',
+    suffix: typeof o.suffix === 'string' ? o.suffix : '',
+    ...(typeof o.translated === 'boolean' ? { translated: o.translated } : {}),
+  }
+}
+
+/** Coerce the far end of a multi-block span, or drop it. `SpanEnd.fragment` is
+ *  required by the type and by `resolveSpan`, so an end without a usable fragment
+ *  is discarded and the thread degrades to its first block. */
+function normalizeEnd(e: unknown): SpanEnd | undefined {
+  if (typeof e !== 'object' || e === null) return undefined
+  const o = e as Record<string, unknown>
+  const fragment = normalizeFragment(o.fragment)
+  if (typeof o.quote !== 'string' || !fragment) return undefined
+  return {
+    quote: o.quote,
+    prefix: typeof o.prefix === 'string' ? o.prefix : '',
+    suffix: typeof o.suffix === 'string' ? o.suffix : '',
+    hintLine: typeof o.hintLine === 'number' && Number.isFinite(o.hintLine) ? o.hintLine : 0,
+    quoteHash: typeof o.quoteHash === 'string' ? o.quoteHash : '',
+    fragment,
+  }
+}
+
 /** Coerce a validated thread's anchor to safe types. `isValidThread` only checks
  *  `quote`; the re-anchoring math assumes `prefix`/`suffix` are strings and
  *  `hintLine` a number, so an untrusted sidecar that omits them (or gives wrong
  *  types) must be normalized here — otherwise `diceSimilarity` throws on
- *  `undefined.length` when a block has ≥2 anchor candidates. */
-function normalizeThread(t: CommentThread): CommentThread {
+ *  `undefined.length` when a block has ≥2 anchor candidates.
+ *
+ *  Rebuilding field-by-field is deliberate (never spread untrusted input), which is
+ *  why `fragment` and `end` must be carried over EXPLICITLY: omitting them silently
+ *  downgraded every fragment and multi-block comment to a whole-block one on load,
+ *  even though the writer had put them on disk. Optional keys stay absent rather
+ *  than `undefined`, so serialize → parse → serialize is byte-stable. */
+export function normalizeThread(t: CommentThread): CommentThread {
   const a = t.anchor as unknown as Record<string, unknown>
+  const fragment = normalizeFragment(a.fragment)
+  const end = normalizeEnd(a.end)
   return {
     anchor: {
       quote: typeof a.quote === 'string' ? a.quote : '',
@@ -87,6 +128,8 @@ function normalizeThread(t: CommentThread): CommentThread {
       suffix: typeof a.suffix === 'string' ? a.suffix : '',
       hintLine: typeof a.hintLine === 'number' && Number.isFinite(a.hintLine) ? a.hintLine : 0,
       quoteHash: typeof a.quoteHash === 'string' ? a.quoteHash : '',
+      ...(fragment ? { fragment } : {}),
+      ...(end ? { end } : {}),
     },
     orphaned: Boolean(t.orphaned),
     comments: t.comments,
