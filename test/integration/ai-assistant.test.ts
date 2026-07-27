@@ -207,9 +207,7 @@ function openPreview(
     commentsService: comments,
     getDocumentText: () => doc.getText(),
     getDocumentUri: () => doc.uri as never,
-    applyEdit: async (newText) => {
-      await replaceAll(newText)
-    },
+    applyEdit: async (newText) => replaceAll(newText),
     aiAssistant: () => settings.getAiAssistantConfig(),
     buildAssistantProvider,
   }
@@ -471,18 +469,51 @@ describe('J15: Ask AI over a multi-block selection', () => {
     h.dispose()
   })
 
-  // DEFECT, reported rather than asserted — the assertion below would fail today, and a
-  // test that instead pinned the current behaviour would be worthless. `addComment`
-  // returns `Comment | undefined`; `saveAssistantSummary` (src/PreviewController.ts:397)
-  // drops that return. Two reachable inputs make it undefined: a blank/whitespace summary
-  // from the model (src/CommentsService.ts:272) and a block that no longer anchors
-  // (src/CommentsService.ts:291). In both cases the host posts `assistantClosed` — the
-  // success signal — the dialog closes, the conversation is discarded (req 4.8) and the
-  // summary exists nowhere. Verified by driving this suite's harness with a whitespace
-  // summary and with a stale paragraphIndex: the sidecar keeps only the seeded comment and
-  // no `assistantError` is ever posted. Req 17.8 promises "Failed to save summary as
-  // comment: <reason>"; req 8.6 promises the dialog stays open when the save fails.
-  it.todo('reports an error and stays open when the summary cannot be stored (req 17.8 / 8.6)')
+  // FIXED 2026-07-27. `addComment` returns `Comment | undefined` and refuses two reachable
+  // inputs: a blank summary from the model (src/CommentsService.ts:272) and a block that no
+  // longer anchors (:291). That return used to be dropped, so the host posted
+  // `assistantClosed` — the success signal — the dialog closed, the conversation was
+  // discarded (req 4.8) and the summary existed nowhere. Req 17.8 wants the failure
+  // reported; req 8.6 wants the dialog to stay open.
+  it('reports an error and stays open when the summary cannot be stored (req 17.8 / 8.6)', async () => {
+    seedJ15()
+    // A model that answers the question, then returns whitespace for the hidden
+    // summarization turn — `addComment` trims it to nothing and refuses.
+    const turns: AssistantMessage[][] = []
+    const h = openPreview(() => scriptedAssistant(['Three retries would be safer.', '   \n  '], turns))
+    await h.comments!.load()
+    await h.controller.renderNow()
+    h.send({ type: 'requestComments' })
+    await settle()
+    h.send({ type: 'askAiOpen', paragraphIndex: 2, lastIndex: 3, selection: 'retries once', translated: false })
+    await settle()
+    h.send({ type: 'askAiSend', text: 'How many retries should we use?' })
+    await settle()
+
+    h.clearPosted()
+    h.send({ type: 'askAiSaveSummary' })
+    await settle(600) // let the flush debounce fire too, so a stray write would show up
+
+    // The user is told, and the dialog is NOT closed — the conversation the summary came
+    // from is still there to retry from.
+    expect(messagesOf(h.posted(), 'assistantError')).toHaveLength(1)
+    expect(messagesOf(h.posted(), 'assistantError')[0].message).toMatch(/could not be saved/i)
+    expect(messagesOf(h.posted(), 'assistantClosed')).toHaveLength(0)
+
+    // And nothing was written: the store still holds only the seeded comment.
+    const onDisk = JSON.parse(vscode.__getFile(SIDECAR_PATH) as string) as {
+      threads: Array<{ comments: Array<{ body: string }> }>
+    }
+    expect(onDisk.threads.flatMap((t) => t.comments.map((c) => c.body))).toEqual([REVIEW_COMMENT])
+
+    // The session survives, so a retry is a real option rather than a restart.
+    h.clearPosted()
+    h.send({ type: 'askAiSend', text: 'And the backoff?' })
+    await settle()
+    expect(messagesOf(h.posted(), 'assistantReply').length).toBeGreaterThan(0)
+
+    h.dispose()
+  })
 })
 
 // =============================================================================

@@ -544,11 +544,14 @@ export class ActivationController implements IActivationController, vscode.Custo
       () => this.settings.getGlossary(),
     )
 
-    const applyEdit = async (newText: string) => {
+    const applyEdit = async (newText: string): Promise<boolean> => {
       const edit = new vscode.WorkspaceEdit()
       const fullRange = new vscode.Range(0, 0, document.lineCount, 0)
       edit.replace(document.uri, fullRange, newText)
-      await vscode.workspace.applyEdit(edit)
+      // The boolean is the whole signal — see the note below, which the comment
+      // write-back already acts on. Discarding it here let a rejected paragraph save
+      // pass for a successful one.
+      return vscode.workspace.applyEdit(edit)
     }
     // The comment layer needs to KNOW whether its write-back landed, which the paragraph-save
     // closure above throws away. `applyEdit` RESOLVES FALSE (it does not throw) when the

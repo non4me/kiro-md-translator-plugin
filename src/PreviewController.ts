@@ -42,8 +42,12 @@ export interface PreviewDeps {
   commentsService?: ICommentsService
   getDocumentText: () => string
   getDocumentUri: () => vscode.Uri
-  /** Persist edited source back to the document (used by saveParagraph, req 7.14). */
-  applyEdit?: (newText: string) => Promise<void>
+  /** Persist edited source back to the document (used by saveParagraph, req 7.14).
+   *  Resolves TRUE only when the edit actually landed. `vscode.workspace.applyEdit`
+   *  RESOLVES FALSE — it does not throw — when the document version moved underneath,
+   *  and a rejected edit leaves the document byte-identical, so nothing downstream can
+   *  tell the difference afterwards. The boolean is the only signal there is. */
+  applyEdit?: (newText: string) => Promise<boolean>
   /** Run a VS Code command (Edit_Mode opens the source editor via `vscode.openWith`). */
   executeCommand?: (command: string, ...args: unknown[]) => Thenable<unknown>
   /** Plugin-owned memory size in bytes (injected for the monitor, req 5.1/5.6). */
@@ -268,7 +272,12 @@ export class PreviewController implements IPreviewController {
         void this.handleEditParagraph(message.paragraphIndex, message.lastIndex)
         break
       case 'saveParagraph':
-        void this.handleSaveParagraph(message.paragraphIndex, message.storageText, message.lastIndex)
+        void this.handleSaveParagraph(
+          message.paragraphIndex,
+          message.storageText,
+          message.targetText,
+          message.lastIndex,
+        )
         break
       case 'modalSyncRequest':
         void this.handleModalSync(message.field, message.text)
@@ -394,7 +403,18 @@ export class PreviewController implements IPreviewController {
     if (!this.assistant || !this.assistantSel) return
     try {
       const body = await this.assistant.summarize()
-      this.deps.commentsService?.addComment(this.assistantSel.first, body)
+      // `addComment` returns undefined when it refuses: an empty summary, or a block
+      // that no longer exists to anchor to. Discarding that answer and closing the
+      // dialog anyway reported success for a comment that was never stored — and took
+      // the conversation the summary came from with it.
+      const saved = this.deps.commentsService?.addComment(this.assistantSel.first, body)
+      if (this.deps.commentsService && !saved) {
+        this.deps.post({
+          type: 'assistantError',
+          message: t('The summary could not be saved as a comment. The conversation is still open — try again.'),
+        })
+        return
+      }
       this.emitComments()
       this.assistant = undefined
       this.deps.post({ type: 'assistantClosed' })
@@ -538,6 +558,7 @@ export class PreviewController implements IPreviewController {
   private async handleSaveParagraph(
     paragraphIndex: number,
     storageText: string,
+    targetText: string,
     lastIndex: number = paragraphIndex,
   ): Promise<void> {
     const newSource = this.deps.engine.replaceParagraphInSource(
@@ -547,8 +568,25 @@ export class PreviewController implements IPreviewController {
       storageText,
       lastIndex,
     )
+    // Write FIRST, commit second. Committing `sourceText` before the write meant a
+    // rejected edit still re-rendered the preview with the new paragraph while the
+    // document kept the old bytes — the edit was silently dropped and the preview
+    // lied about it. On failure the in-memory source must stay exactly where the
+    // document is, or the next save would splice against a phantom.
+    if (this.deps.applyEdit && !(await this.deps.applyEdit(newSource))) {
+      // Re-open the dialog with what the user typed. The webview hides it on Save, so
+      // without this their text dies with the dialog and only the old paragraph remains.
+      this.deps.post({
+        type: 'openEditModal',
+        paragraphIndex,
+        lastIndex,
+        storageText,
+        targetText,
+        error: t('Could not save — the document changed while the dialog was open. Review the text and save again.'),
+      })
+      return
+    }
     this.sourceText = newSource
-    if (this.deps.applyEdit) await this.deps.applyEdit(newSource)
     this.scheduleRender()
   }
 

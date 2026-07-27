@@ -93,6 +93,7 @@ function harness(source: string, opts: Partial<PreviewDeps> = {}): Harness {
     getDocumentUri: () => DOC_URI as never,
     applyEdit: async (text) => {
       written = text
+      return true
     },
     ...opts,
   }
@@ -261,13 +262,62 @@ describe('J3: saving one paragraph is a line-range splice, in the storage langua
    * paragraph — while the document still holds the old bytes and NOTHING is posted to
    * the webview. The user's edit is silently dropped and the preview lies about it.
    *
-   * Left as `.todo` rather than a red test because requirement 7.14 states only that
-   * the plugin SHALL write the changed text; unlike the export path — where req 6.4
-   * mandates a notification describing the cause when the write fails — it names no
-   * failure branch, so the promised behaviour on a rejected edit is undefined. Deciding
-   * it is a spec change, not a test change.
+   * FIXED (2026-07-27): `applyEdit` now resolves a boolean, the controller writes before
+   * it commits `sourceText`, and a rejected write re-opens the edit dialog carrying the
+   * text the user typed — the dialog hides itself on Save, so without that their work
+   * would die with it. Req 7.14 gained the failure branch it never named.
    */
-  it.todo('tells the user when the host rejects the write-back instead of showing the edit as saved')
+  it('re-opens the dialog with the typed text when the host rejects the write-back', async () => {
+    vi.useFakeTimers() // the render debounce; the suite's afterEach restores real timers
+    let accept = false
+    const { controller, posted } = harness(TRAP_SOURCE, {
+      applyEdit: async () => accept,
+    })
+    await controller.renderNow()
+    const before = renderContents(posted)[0]
+    const index = blockContaining(before.lineMap, TRAP_SOURCE, 'MARKER:')
+
+    controller.onWebviewMessage({
+      type: 'saveParagraph',
+      paragraphIndex: index,
+      storageText: 'Rewritten paragraph.',
+      targetText: 'Umgeschriebener Absatz.',
+    })
+    await vi.advanceTimersByTimeAsync(RENDER_DEBOUNCE_MS)
+
+    // (a) The user is told, and gets both fields back exactly as they left them.
+    const reopen = posted.filter((m) => m.type === 'openEditModal').at(-1)
+    expect(reopen).toMatchObject({
+      paragraphIndex: index,
+      storageText: 'Rewritten paragraph.',
+      targetText: 'Umgeschriebener Absatz.',
+    })
+    expect(String((reopen as { error?: string }).error)).toMatch(/could not save/i)
+
+    // (b) The preview does NOT show the edit as applied. This is the actual defect:
+    //     `sourceText` used to be committed before the write, so a rejected edit
+    //     re-rendered as if it had landed while the document kept the old bytes.
+    expect(renderContents(posted)).toHaveLength(1)
+
+    // (c) And the retry works — the controller did not corrupt its own source in the
+    //     meantime, so the splice still lands on the original line range.
+    accept = true
+    controller.onWebviewMessage({
+      type: 'saveParagraph',
+      paragraphIndex: index,
+      storageText: 'Rewritten paragraph.',
+      targetText: 'Umgeschriebener Absatz.',
+    })
+    await vi.advanceTimersByTimeAsync(RENDER_DEBOUNCE_MS)
+    const after = renderContents(posted)
+    expect(after).toHaveLength(2)
+    const fresh = mapping(after[1].lineMap, index)
+    const lines = TRAP_SOURCE.split('\n')
+    const { startLine, endLine } = mapping(before.lineMap, index)
+    const spliced = [...lines.slice(0, startLine), 'Rewritten paragraph.', ...lines.slice(endLine + 1)]
+    expect(spliced.slice(fresh.startLine, fresh.endLine + 1)).toEqual(['Rewritten paragraph.'])
+    controller.dispose()
+  })
 })
 
 // ---------------------------------------------------------------------------

@@ -241,7 +241,17 @@ export type ExtensionMessage =
   | { type: 'tooltipLoading'; paragraphIndex: number }
   | { type: 'tooltipError'; paragraphIndex: number; message: string }
   | { type: 'hideTooltip' }
-  | { type: 'openEditModal'; paragraphIndex: number; lastIndex?: number; storageText: string; targetText: string }
+  /** Opens the paragraph-edit dialog prefilled. `error` is set when the dialog is being
+   *  RE-opened because the save was rejected: it carries the text the user had typed, so
+   *  their work is restored rather than lost with the closed dialog. */
+  | {
+      type: 'openEditModal'
+      paragraphIndex: number
+      lastIndex?: number
+      storageText: string
+      targetText: string
+      error?: string
+    }
   | { type: 'editModalSyncStart'; field: 'storage' | 'target' }
   | { type: 'editModalSyncComplete'; field: 'storage' | 'target'; text: string }
   | { type: 'editModalSyncError'; field: 'storage' | 'target'; message: string }
