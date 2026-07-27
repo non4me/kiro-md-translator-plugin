@@ -36,7 +36,10 @@ const PROVIDER_LABEL: Record<ProviderType, string> = {
   custom: 'Custom',
   ollama: 'Ollama',
 }
-const ASSISTANT_PROVIDER_LABEL: Record<AssistantProviderType, string> = {
+/** The one user-visible name per assistant provider — used by the connection-test
+ *  toasts and mirrored by each provider's `displayName`. Exported so a test can pin
+ *  the two together; they drifted apart once (Google/Copilot). */
+export const ASSISTANT_PROVIDER_LABEL: Record<AssistantProviderType, string> = {
   ollama: 'Ollama',
   openai: 'OpenAI',
   anthropic: 'Anthropic',

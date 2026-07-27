@@ -9,7 +9,9 @@ import { t } from '../l10n'
  */
 export class IdeAssistant implements IAssistantProvider {
   readonly id: AssistantProviderType
-  readonly displayName = 'VS Code Copilot'
+  // Matches ASSISTANT_PROVIDER_LABEL['vscode-copilot'], which is what the
+  // connection-test toast prefixes its message with.
+  readonly displayName = 'GitHub Copilot Chat'
 
   constructor(id: AssistantProviderType, private readonly family: string | undefined) {
     this.id = id

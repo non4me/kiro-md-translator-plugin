@@ -8,7 +8,9 @@ const HOST = 'https://generativelanguage.googleapis.com/v1beta/models'
 
 export class GoogleAssistant implements IAssistantProvider {
   readonly id = 'google' as const
-  readonly displayName = 'Google Gemini'
+  // Matches ASSISTANT_PROVIDER_LABEL.google and the req-17.2 message below; the
+  // Gemini branding belongs to the model, not the provider label.
+  readonly displayName = 'Google'
   constructor(private readonly key: string, private readonly model: string) {
     if (!key) throw new TranslatorError('INVALID_ENDPOINT_URL', t('API key required for {0}', 'Google'))
   }
