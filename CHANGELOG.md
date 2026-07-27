@@ -98,6 +98,16 @@ it, have it rewrite a fragment, or keep the conversation as a comment.
   and back.
 - **Double-clicking the comment marker no longer leaves a word highlighted** inside the dialog it
   opens.
+- **A comment on a nested list item can be found again.** Nested items never got the margin
+  marker, so a comment placed on one was saved and highlighted but could not be opened from the
+  margin. They are marked now, and the marker belongs to the nested item rather than its parent.
+- **"Exclude Selection from Translation" only offers text from the document.** Selecting a comment
+  in its dialog, or the translated column in the side-by-side view, offered that text as a
+  do-not-translate term — the glossary is a list of terms in the file's own language.
+- **Editing an unused provider's settings no longer discards the translation memory.** Changing,
+  say, the custom endpoint while Ollama was selected wiped every remembered translation and made
+  the next click pay for them again. Only the provider actually in use matters; switching provider
+  still clears the memory, as before.
 
 ## [0.7.0] — 2026-07-13
 
