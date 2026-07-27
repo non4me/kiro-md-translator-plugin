@@ -120,6 +120,60 @@ describe('TranslationEngine', () => {
     expect(out).toBe('T(Hello world.)')
   })
 
+  // README: "code, inline code and URLs are never sent to the translation API". That held
+  // for the whole-document path, which walks mdast units, but the single-block path used
+  // to send the block's raw source as ONE segment — so a hover or an edit-modal sync handed
+  // the provider link URLs, image paths, inline code and every markdown marker.
+  it('translateParagraph sends prose only — never markers, URLs, image paths or inline code', async () => {
+    const cases: Array<[string, string[], string]> = [
+      ['- Buy milk and eggs', ['Buy milk and eggs'], '- T(Buy milk and eggs)'],
+      ['## Installation Guide', ['Installation Guide'], '## T(Installation Guide)'],
+      ['> Note: this matters', ['Note: this matters'], '> T(Note: this matters)'],
+      [
+        'See [the docs](https://example.com/a/b) now.',
+        ['See ', 'the docs', ' now.'],
+        'T(See )[T(the docs)](https://example.com/a/b)T( now.)',
+      ],
+      ['Logo: ![alt](./img/logo.png)', ['Logo: '], 'T(Logo: )![alt](./img/logo.png)'],
+      [
+        'Run `npm install` first.',
+        ['Run ', ' first.'],
+        'T(Run )`npm install`T( first.)',
+      ],
+      ['A **bold** word.', ['A ', 'bold', ' word.'], 'T(A )**T(bold)**T( word.)'],
+    ]
+    for (const [input, expectedSegments, expectedOut] of cases) {
+      const seen: string[] = []
+      const { engine } = makeEngine(async (segs) => {
+        seen.push(...segs)
+        return segs.map((s) => `T(${s})`)
+      })
+      const out = await engine.translateParagraph(input, 'en', 'de', new AbortController().signal)
+      expect(seen, `segments for ${JSON.stringify(input)}`).toEqual(expectedSegments)
+      // The structure around the prose is spliced back byte for byte, not re-serialized.
+      expect(out, `output for ${JSON.stringify(input)}`).toBe(expectedOut)
+    }
+  })
+
+  // The reverse direction of the edit modal (Target→Storage) lands in the Storage field
+  // and is written to disk on save, so this path must never normalize the user's markdown
+  // the way a remark-stringify round-trip would.
+  it('translateParagraph preserves bytes a re-serialization would rewrite', async () => {
+    const backslash = String.fromCharCode(92)
+    const cases: Array<[string, string]> = [
+      ['Old Style Heading\n=================', 'T(Old Style Heading)\n================='],
+      ['line one  \nline two', 'T(line one)  \nT(line two)'], // hard break: two spaces
+      [`A literal ${backslash}* star.`, `T(A literal ${backslash}* star.)`], // escape kept
+      ['Caf&eacute; here.', 'T(Caf&eacute; here.)'], // entity not decoded
+      ['3. Third step', '3. T(Third step)'], // ordered marker and its number
+    ]
+    for (const [input, expected] of cases) {
+      const { engine } = makeEngine(async (segs) => segs.map((s) => `T(${s})`))
+      const out = await engine.translateParagraph(input, 'en', 'de', new AbortController().signal)
+      expect(out, `output for ${JSON.stringify(input)}`).toBe(expected)
+    }
+  })
+
   it('translateParagraph on a table row translates the cells, not the pipes', async () => {
     const seen: string[] = []
     const { engine } = makeEngine(async (segs) => {

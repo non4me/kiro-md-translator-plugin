@@ -168,8 +168,58 @@ export class TranslationEngine implements ITranslationEngine {
       const out = await this.translateMarkdownFragment(text, sourceLang, targetLang, signal)
       return out === undefined ? text : out.trimEnd()
     }
-    const [result] = await this.translateSegments([text], sourceLang, targetLang, signal)
-    return result
+    // Plain prose still carries markdown: list markers, heading hashes, blockquote
+    // arrows, emphasis, and — the part that matters — link URLs, image paths and
+    // inline code. Sending the block whole handed all of it to the provider, against
+    // req 3.7 / Property 2 and against what the README promises. Walk the same units
+    // the whole-document path walks, so only `text` nodes travel.
+    const spliced = await this.translateProseInPlace(text, sourceLang, targetLang, signal)
+    return spliced ?? text
+  }
+
+  /** Translate a fragment's prose and splice the results back into the ORIGINAL string
+   *  by node offsets, back to front. Deliberately NOT a `remark-stringify` round-trip:
+   *  one caller is the edit modal's Target→Storage direction, whose output lands in the
+   *  Storage field and is written to disk on save, where a re-serialization would
+   *  silently reformat the user's markdown (setext headings, list markers, escapes).
+   *  Every byte outside a translated `text` node survives verbatim.
+   *  Returns undefined when there is nothing translatable. */
+  private async translateProseInPlace(
+    markdown: string,
+    sourceLang: LanguageCode,
+    targetLang: LanguageCode,
+    signal: AbortSignal,
+  ): Promise<string | undefined> {
+    const mdast = this.renderer.parse(markdown)
+    const spans: Array<{ start: number; end: number; text: string }> = []
+    visit(mdast, (node: AnyNode) => {
+      if (node.type !== 'text' || typeof node.value !== 'string') return
+      if (node.value.trim().length === 0) return
+      const pos = node.position
+      if (!pos?.start || !pos.end || typeof pos.start.offset !== 'number' || typeof pos.end.offset !== 'number') return
+      // The SOURCE SLICE, not `node.value`: they differ wherever markdown escapes or
+      // character entities are involved (`\*` parses to `*`, `&amp;` to `&`). Sending
+      // the slice keeps the splice range and the segment in exact correspondence, so
+      // the escaping survives whatever the provider does with the words around it.
+      // Sending `value` instead would either lose the escape or force a guess about
+      // where to re-insert it. `inlineCode`, link `url` and image paths are different
+      // node types and are still never collected, which is the point of this walk.
+      spans.push({ start: pos.start.offset, end: pos.end.offset, text: markdown.slice(pos.start.offset, pos.end.offset) })
+    })
+    if (spans.length === 0) return undefined
+
+    const translated = await this.translateSegments(
+      spans.map((s) => s.text),
+      sourceLang,
+      targetLang,
+      signal,
+    )
+    let out = markdown
+    // Back to front: an earlier splice would invalidate every later offset.
+    for (let i = spans.length - 1; i >= 0; i--) {
+      out = out.slice(0, spans[i].start) + translated[i] + out.slice(spans[i].end)
+    }
+    return out
   }
 
   /** Parse a markdown fragment, translate its units (text + code comments), and

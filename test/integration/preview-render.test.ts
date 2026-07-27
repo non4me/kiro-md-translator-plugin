@@ -138,7 +138,10 @@ function setup(source: string, translate: (segment: string) => string = (s) => `
     exportService: { exportTranslation: async () => {} } as never,
     getDocumentText: () => doc.text,
     getDocumentUri: () => vscode.Uri.file('/docs/readme.md') as never,
-    applyEdit: async (text: string) => void applied.push(text),
+    applyEdit: async (text: string) => {
+      applied.push(text)
+      return true
+    },
   }
   return { controller: new PreviewController(deps), posted, calls, cache, doc, applied }
 }
@@ -335,7 +338,23 @@ describe('J12: the source language is always Storage, and no display path writes
     await vi.advanceTimersByTimeAsync(1500)
     controller.dispose()
 
-    expect(calls.length).toBeGreaterThanOrEqual(6) // the journey really exercised every path
+    // The journey really exercised every path. The count is deliberately not a floor on
+    // "one call per step": a block's translation is segmented exactly like the document's,
+    // so the modal and the hover mostly HIT the cache the initial pass filled. Only the
+    // genuinely new text costs a request — which is the quota promise in the README.
+    expect(calls.map((c) => c.segments)).toEqual([
+      expect.arrayContaining(['Plain opening line.']), // initial document pass, en→de
+      [', edited.'], // the modal's Storage edit: only the new words, not the paragraph
+      expect.arrayContaining(['Ein anderer Absatz mit ']), // the one reverse direction
+      expect.arrayContaining(['Plain opening line.']), // re-translated into fr
+    ])
+    // No request may carry a whole block verbatim: markdown scaffolding, link URLs and
+    // inline code live outside `text` nodes and must never travel (req 3.7, Property 2).
+    for (const call of calls) {
+      for (const segment of call.segments) {
+        expect(segment).not.toMatch(/^[-*>#]|\[[^\]]*\]\(|`|\*\*/)
+      }
+    }
 
     // Exactly one call may run in the reverse direction, and it must be the Target→Storage
     // one. Asserting the direction (rather than "some reverse call is allowed") keeps a
