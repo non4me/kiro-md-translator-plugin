@@ -500,7 +500,8 @@ describe('J14: source and translated renders share one set of block indices', ()
   // translation", reusing the shared `data-paragraph-index` (reqs 10.3/10.4). CLAUDE.md
   // calls the same property the reason element-level scroll sync and surgical write-back
   // work. Nothing pairs the two columns except this index.
-  it('the translated html carries the same indices, in the same order, as the source', async () => {
+  // Feature: kiro-md-translator-plugin, Property 25: source and translated renders assign identical block indices
+  it('Property 25: the translated html carries the same indices, in the same order, as the source', async () => {
     const { controller, posted } = setup(BILINGUAL_DOC, LOUD)
     await controller.renderNow()
     const render = lastOf(posted, 'renderContent')

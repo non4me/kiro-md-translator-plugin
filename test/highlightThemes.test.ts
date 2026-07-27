@@ -1,8 +1,12 @@
 import { describe, it, expect } from 'vitest'
 import { codeThemeCss } from '../src/highlightThemes'
 
-// Feature: code syntax highlighting, req 12 — the theme is a stylesheet swap.
-describe('codeThemeCss (req 12)', () => {
+// Feature: kiro-md-translator-plugin, Property 28: the theme selector yields no stylesheet for
+// `off`, an unscoped stylesheet for a named theme, and — for `auto` — a light+dark pair in which
+// every rule is gated on an editor body class. This is the stylesheet-swap half of P28 only; the
+// "colours tokens without altering the code or its line map" half is marked in
+// MarkdownRenderer.test.ts.
+describe('Property 28: codeThemeCss theme selection (req 12)', () => {
   it('off yields no stylesheet', () => {
     expect(codeThemeCss('off')).toBe('')
   })

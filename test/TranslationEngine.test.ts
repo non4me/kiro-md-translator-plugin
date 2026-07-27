@@ -174,7 +174,11 @@ describe('TranslationEngine', () => {
     }
   })
 
-  it('translateParagraph on a table row translates the cells, not the pipes', async () => {
+  // Feature: kiro-md-translator-plugin, Property 25: a table row translated as a single block sends
+  // only its cell text — never the `|` scaffolding, which survives verbatim in the reassembled row.
+  // The code-block side of the same clause is Property 2/24 (see above and codeComments.test.ts);
+  // the indexing half of P25 is marked in MarkdownRenderer.test.ts.
+  it('Property 25: translateParagraph on a table row translates the cells, not the pipes', async () => {
     const seen: string[] = []
     const { engine } = makeEngine(async (segs) => {
       seen.push(...segs)

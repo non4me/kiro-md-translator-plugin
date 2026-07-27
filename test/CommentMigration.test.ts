@@ -19,7 +19,14 @@ function blocksFrom(texts: string[]): Block[] {
 }
 const ids = () => { let n = 0; return () => `c${n++}` }
 
-describe('comment migration', () => {
+// Feature: kiro-md-translator-plugin, Property 23: moving comments between storages is lossless —
+// the target holds them before the source is cleared, never neither place. The cases below
+// enumerate the ordered pairs over {sidecar, inline, draft} plus the inline→inline placement change
+// that must NOT clear. The id-preservation clause has its own case at the end: an id is what a
+// later edit/delete addresses a comment by, so a migration that renumbered them would silently
+// break every existing reference while looking lossless. The auto-import phase of the property
+// (req 11.17) lives in CommentImporter.test.ts.
+describe('Property 23: comment migration', () => {
   it('sidecar → inline(after): sidecar removed, carrier written into .md', async () => {
     const { io, store } = memIO()
     let source = `Alpha.\n\nBeta.`
@@ -199,7 +206,10 @@ describe('comment migration', () => {
  * buffer is never saved — close-without-save, undo, crash. So the source is cleared only
  * once the target has reached disk.
  */
-describe('migration durability', () => {
+// Feature: kiro-md-translator-plugin, Property 23: a target whose write cannot reach disk leaves the
+// source store untouched — both independent failure modes (the edit was rejected, the save failed),
+// plus the empty set that must never save at all.
+describe('Property 23: migration durability', () => {
   const withSave = (io: SidecarIO, src: () => string, set: (t: string) => void, save: () => Promise<boolean>) =>
     new CommentsService(
       docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000,
@@ -287,4 +297,36 @@ describe('migration durability', () => {
 
     expect(saves).toBe(0) // switching with nothing to move must not touch the file
   })
+
+  it('Property 23: a comment keeps its id across every storage move', async () => {
+    const { io, store } = memIO()
+    let source = `Alpha.
+
+Beta.`
+    const svc = new CommentsService(docUri, new SidecarBackend(docUri, io), ids(), () => 't', 1_000_000, () => source, async (t) => { source = t; return true })
+    await svc.load()
+    svc.reanchor(blocksFrom(['Alpha.', 'Beta.']), source)
+    const first = svc.addComment(1, 'first note')
+    const second = svc.addComment(1, 'second note')
+    await svc.flush()
+    const before = [first!.id, second!.id]
+    expect(new Set(before).size).toBe(2) // distinct to begin with, or the check is vacuous
+
+    // sidecar → inline → draft → back to sidecar: every hop re-serializes the store.
+    const idsAfter = async (next: () => ReturnType<typeof svc.currentBackend>) => {
+      const prev = svc.currentBackend()
+      svc.setBackend(next())
+      await svc.migrateFrom(prev)
+      return svc.getThreads(1).flatMap((t) => t.comments.map((c) => c.id))
+    }
+    expect(await idsAfter(() => new InlineAfterBackend())).toEqual(before)
+    expect(await idsAfter(() => new DraftBackend(docUri, storageRoot, io))).toEqual(before)
+    expect(await idsAfter(() => new SidecarBackend(docUri, io))).toEqual(before)
+
+    // And the ids that came back are the ones an edit still addresses.
+    svc.editComment(before[0], 'edited body')
+    expect(svc.getThreads(1)[0].comments.find((c) => c.id === before[0])?.body).toBe('edited body')
+    expect(store.size).toBe(1)
+  })
+
 })

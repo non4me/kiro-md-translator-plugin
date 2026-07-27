@@ -126,7 +126,12 @@ describe('matchThread', () => {
   })
 })
 
-describe('fragment anchoring (stage 3)', () => {
+// Feature: kiro-md-translator-plugin, Property 27: sub-block anchoring resolves the fragment or
+// orphans it, never a wrong span. Every clause of the property has an example below (no fragment →
+// whole block; fragment → its char span; a repeated fragment disambiguated by in-block context; a
+// vanished fragment → orphan even while the block still matches; a fragment surviving an edit
+// elsewhere in its block). Pinned by example, not by a fast-check generator.
+describe('Property 27: sub-block fragment anchoring (stage 3)', () => {
   const blocks = blocksFrom([
     'Intro block.',
     'The quick brown fox jumps over the lazy dog.',

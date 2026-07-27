@@ -41,8 +41,48 @@ describe('trimFragment', () => {
     expect(text('  x  ')).toBe('x')
   })
 
-  // Idempotence: trimming an already-trimmed fragment changes nothing.
-  it('is idempotent', () => {
+  // Feature: kiro-md-translator-plugin, Property 26: the trimmed text is exactly the input with
+  // its edge whitespace and edge punctuation removed — the clause the two properties below cannot
+  // see. Both of those relate two outputs of trimFragment to each other (idempotence, and a slice
+  // of the input at trimFragment's OWN offsets), so a degenerate implementation satisfies them:
+  // `s => ({ text: s, start: 0, end: s.length })` is idempotent and slice-consistent while trimming
+  // nothing at all. This one uses an INDEPENDENT oracle built from the Unicode classes the design
+  // names, so it fails for that implementation and for any that trims too much.
+  it('Property 26: trims exactly the edges, against an oracle that is not the implementation', () => {
+    const EDGE = /^[\s\p{P}\p{S}]+|[\s\p{P}\p{S}]+$/gu
+    // Built from explicit sets rather than fc.stringMatching, which cannot compile
+    // Unicode property escapes.
+    const EDGE_CHARS = [' ', '\t', '"', "'", '«', '»', '(', ')', '.', ',', ';', ':', '!', '?', '—', '…', '-']
+    const ALNUM = ['a', 'Z', 'я', '漢', '1', '9']
+    const noise = fc.array(fc.constantFrom(...EDGE_CHARS), { maxLength: 4 }).map((a) => a.join(''))
+    // A core that BEGINS and ENDS with a letter or digit, with punctuation allowed inside:
+    // interior punctuation is the half these properties must not be free to eat.
+    const core = fc
+      .tuple(
+        fc.constantFrom(...ALNUM),
+        fc.array(fc.constantFrom(...ALNUM, ' ', ',', "'", '.', '-'), { maxLength: 6 }).map((a) => a.join('')),
+        fc.constantFrom(...ALNUM),
+      )
+      .map(([head, mid, tail]) => `${head}${mid}${tail}`)
+    fc.assert(
+      fc.property(
+        fc.tuple(noise, core, noise),
+        ([lead, core, trail]) => {
+          const f = trimFragment(`${lead}${core}${trail}`)
+          // The oracle: strip edge whitespace/punctuation from the WHOLE string directly.
+          const expected = `${lead}${core}${trail}`.replace(EDGE, '')
+          expect(f?.text).toBe(expected)
+          // …and the core's own interior characters all survive, in order.
+          expect(f?.text).toContain(core.replace(EDGE, ''))
+        },
+      ),
+      { numRuns: 200 },
+    )
+  })
+
+  // Feature: kiro-md-translator-plugin, Property 26: trimming an already-trimmed fragment yields
+  // the same text.
+  it('Property 26: is idempotent', () => {
     fc.assert(
       fc.property(fc.string(), (s) => {
         const once = trimFragment(s)
@@ -54,8 +94,9 @@ describe('trimFragment', () => {
     )
   })
 
-  // The trimmed text is always a contiguous slice of the input at the reported offsets.
-  it('offsets always identify the trimmed text', () => {
+  // Feature: kiro-md-translator-plugin, Property 26: the trimmed text is always a contiguous slice
+  // of the input at the reported offsets — which is what forbids dropping an interior character.
+  it('Property 26: offsets always identify the trimmed text', () => {
     fc.assert(
       fc.property(fc.string(), (s) => {
         const f = trimFragment(s)

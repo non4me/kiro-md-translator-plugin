@@ -442,37 +442,60 @@ describe('PreviewController settings hint (req 3.20)', () => {
     return msg && msg.type === 'updateButtonState' ? msg.settingsHint : undefined
   }
 
-  it('deepl with a target but no key → hint names the API key', () => {
+  // Feature: kiro-md-translator-plugin, Property 22: the settings hint is defined iff the target
+  // language is missing OR the provider needs a key and has none — and it names whichever is
+  // missing. The inputs are a closed enum and two booleans, so the cases below are a truth table
+  // rather than a generator. Both key-requiring providers are exercised, because the rule is a
+  // DISJUNCTION over a closed set and testing one disjunct would leave the other free to drift.
+  // The webview half of the property — buttons hidden, settings link shown, buttons still in the
+  // DOM so Property 6 holds — is not in this file; it lives in the webview e2e layer.
+  it('Property 22: deepl with a target but no key → hint names the API key', () => {
     expect(hintFor({ providerType: 'deepl', targetLanguage: 'de' }, false)).toBe(
       'Set the API key in settings',
     )
   })
 
-  it('deepl with a target and a key → no hint', () => {
+  it('Property 22: deepl with a target and a key → no hint', () => {
     expect(hintFor({ providerType: 'deepl', targetLanguage: 'de' }, true)).toBeUndefined()
   })
 
-  it('deepl with neither a target nor a key → hint names both', () => {
+  it('Property 22: deepl with neither a target nor a key → hint names both', () => {
     expect(hintFor({ providerType: 'deepl', targetLanguage: undefined }, false)).toBe(
       'Set the target language and API key in settings',
     )
   })
 
-  it('ollama without a target → hint names only the target (key not required)', () => {
+  it('Property 22: google with a target but no key → hint names the API key', () => {
+    expect(hintFor({ providerType: 'google', targetLanguage: 'de' }, false)).toBe(
+      'Set the API key in settings',
+    )
+  })
+
+  it('Property 22: google with a target and a key → no hint', () => {
+    expect(hintFor({ providerType: 'google', targetLanguage: 'de' }, true)).toBeUndefined()
+  })
+
+  it('Property 22: google with neither a target nor a key → hint names both', () => {
+    expect(hintFor({ providerType: 'google', targetLanguage: undefined }, false)).toBe(
+      'Set the target language and API key in settings',
+    )
+  })
+
+  it('Property 22: ollama without a target → hint names only the target (key not required)', () => {
     expect(hintFor({ providerType: 'ollama', targetLanguage: undefined }, false)).toBe(
       'Set the target language in settings',
     )
   })
 
-  it('ollama with a target and no key → no hint (keyless provider)', () => {
+  it('Property 22: ollama with a target and no key → no hint (keyless provider)', () => {
     expect(hintFor({ providerType: 'ollama', targetLanguage: 'de' }, false)).toBeUndefined()
   })
 
-  it('custom with a target and no key → no hint (key optional)', () => {
+  it('Property 22: custom with a target and no key → no hint (key optional)', () => {
     expect(hintFor({ providerType: 'custom', targetLanguage: 'de' }, false)).toBeUndefined()
   })
 
-  it('absent hasApiKey dep (unit context) → key treated as present, no hint', () => {
+  it('Property 22: absent hasApiKey dep (unit context) → key treated as present, no hint', () => {
     expect(hintFor({ providerType: 'deepl', targetLanguage: 'de' })).toBeUndefined()
   })
 
