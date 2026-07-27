@@ -320,24 +320,34 @@ describe('J10: the glossary never leaves the host, and changing it drops both ca
     expect(provider.calls).toEqual([])
   })
 
-  // AMBIGUOUS — deliberately not asserted either way.
-  //
-  // Editing `customEndpoint` while `providerType` is `ollama` changes a setting the
-  // active provider never reads, yet it drops both cache tiers and the next click
-  // re-spends quota. Two layers disagree about whether it should:
-  //   - ActivationController.configFingerprint() (src/ActivationController.ts:210-220)
-  //     hashes customEndpoint, ollamaEndpoint and ollamaModel UNCONDITIONALLY, and
-  //     `cache.onConfigChanged()` (src/ActivationController.ts:186) invalidates on any
-  //     drift. This is what actually happens.
-  //   - PreviewController.onSettingsChanged (src/PreviewController.ts:667-672) scopes
-  //     each endpoint/model to its own provider, with the comment "comparing it while
-  //     another provider is active would needlessly invalidate the cache + force a
-  //     re-translate". That guard can never be reached: the owner already invalidated.
-  // Requirement 9.5 does not settle it — «провайдер (его тип, эндпоинт или модель)»
-  // reads either as "any provider setting" (current behaviour) or as "the ACTIVE
-  // provider's endpoint" (the guard's intent, and the reading README:22's quota promise
-  // favours). Pick one in the spec first; the test is a one-liner once it is decided.
-  it.todo('a dormant provider\'s endpoint should not decide whether the memory survives')
+  // RESOLVED 2026-07-27. Two layers disagreed and the blunter one won:
+  // `configFingerprint` hashed every provider's endpoint/model unconditionally, so
+  // editing a DORMANT provider's endpoint dropped both cache tiers, while
+  // `PreviewController.onSettingsChanged` already scoped each endpoint to its own
+  // provider — a guard that could therefore never be reached. Req 9.5's «провайдер
+  // (его тип, эндпоинт или модель)» is now read as the ACTIVE provider's, the reading
+  // README's quota promise requires: a setting no future translation reads must not
+  // cost one. `providerType` stays in the hash, so switching provider still invalidates.
+  it("keeps the memory when a dormant provider's endpoint changes, drops it for the active one", async () => {
+    vscode.__setConfig(SECTION, 'providerType', 'ollama')
+    const session = await openPreview(HANDBOOK, new vscode.MemMemento())
+    const firstHtml = await translate(session)
+    provider.calls.length = 0
+
+    // Ollama is active; `customEndpoint` belongs to the custom provider and is read by
+    // nothing on this path. The memory must survive.
+    vscode.__setConfig(SECTION, 'customEndpoint', 'https://example.invalid/v1')
+    vscode.__fireConfigChange(SECTION)
+    expect(await translate(session)).toBe(firstHtml)
+    expect(provider.calls).toEqual([])
+
+    // The ACTIVE provider's own endpoint is a different matter: those entries were
+    // produced by a different server, so they must go.
+    vscode.__setConfig(SECTION, 'ollamaEndpoint', 'http://localhost:11500')
+    vscode.__fireConfigChange(SECTION)
+    await translate(session)
+    expect(provider.calls.length).toBeGreaterThan(0)
+  })
 })
 
 // ---------------------------------------------------------------------------

@@ -209,12 +209,24 @@ export class ActivationController implements IActivationController, vscode.Custo
    */
   private configFingerprint(): string {
     const c = this.settings.getConfig()
+    // Only the ACTIVE provider's connection settings belong here. Hashing all of them
+    // meant editing `customEndpoint` while Ollama was selected dropped both cache tiers
+    // and made the next click re-spend quota, for a setting no future translation reads
+    // — against README's "reopening a file does not re-spend API quota". It also made
+    // PreviewController's own per-provider guard unreachable, so the two layers
+    // disagreed about the same question and the blunter one won.
+    // `providerType` stays in the hash, so switching provider still invalidates: a stale
+    // entry produced by a different endpoint can never be served.
+    const providerSettings =
+      c.providerType === 'custom'
+        ? [c.customEndpoint ?? '']
+        : c.providerType === 'ollama'
+          ? [c.ollamaEndpoint ?? '', c.ollamaModel]
+          : [] // deepl / google authenticate with a key and have no endpoint of their own
     return JSON.stringify([
       c.storageLanguage,
       c.providerType,
-      c.customEndpoint ?? '',
-      c.ollamaEndpoint ?? '',
-      c.ollamaModel,
+      ...providerSettings,
       [...c.glossary].sort(),
     ])
   }
