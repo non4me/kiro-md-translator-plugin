@@ -744,13 +744,29 @@ assistantClose.addEventListener('click', () => {
 // exists to skip REDUNDANT writes on caret-only changes, and the very first write is never
 // redundant — until it runs there is no attribute at all.
 let lastSelectionText: string | null = null
+
+/** Is this selection storage-language text OF THE DOCUMENT? The Glossary is a list of
+ *  source terms, so everything else has to be refused: a comment body rendered in the
+ *  thread modal or the popover, the find bar, the header, the hover peek, the gutter's
+ *  own count badge, and the translated column of the bilingual grid. Checking the mode
+ *  alone was not enough — it says WHAT is displayed, never WHERE the selection is. */
+function selectionIsSourceDocumentText(sel: Selection | null): boolean {
+  if (!sel || sel.rangeCount === 0) return false
+  const node = sel.getRangeAt(0).commonAncestorContainer
+  const el = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement
+  if (!el || !content.contains(el)) return false
+  if (el.closest('.bctl')) return false // the gutter control is UI injected into the block
+  // In bilingual view both languages are on screen at once, so the mode flag cannot
+  // decide: the right cell is the translation.
+  return bilingual ? el.closest('.bcell-r') === null : displaying === 'source'
+}
+
 function updateSelectionContext(): void {
   const active = document.activeElement
   // Leave form fields to their native editing menu (Cut/Copy/Paste).
   if (active && (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT')) return
-  // Only offer exclusion while the SOURCE (storage language) is shown — the
-  // Glossary is a storage-language list, so a translated selection must not be added.
-  const text = displaying === 'source' ? (window.getSelection()?.toString() ?? '').trim() : ''
+  const sel = window.getSelection()
+  const text = selectionIsSourceDocumentText(sel) ? (sel?.toString() ?? '').trim() : ''
   if (text === lastSelectionText) return // skip redundant writes on caret-only changes
   lastSelectionText = text
   document.body.dataset.vscodeContext = JSON.stringify({

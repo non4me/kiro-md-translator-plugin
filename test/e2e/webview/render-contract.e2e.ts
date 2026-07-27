@@ -491,6 +491,67 @@ describe('E24 native context menu selection', () => {
     expect(preview.errors()).toEqual([])
   })
 
+  // A form field has `activeElement` to give it away. Rendered chrome does not: the
+  // comment modal's thread bodies are plain DOM, so dragging across one used to publish
+  // that comment as the Glossary candidate. The Glossary is a list of terms found in the
+  // SOURCE DOCUMENT; the gate now asks where the selection is, not only what is displayed.
+  it('refuses a selection made in rendered chrome rather than in the document', async () => {
+    const STAMP = '2026-07-01T00:00:00Z'
+    preview = await openPreview()
+    await preview.configure()
+    await preview.render(SELECT_SOURCE)
+
+    // Baseline: a document selection IS offered, so a refusal below means the gate and
+    // not a dead listener.
+    const inDoc = await preview.dragSelect('[data-paragraph-index="1"]')
+    expect(await contextOffer(preview)).toEqual({ offered: true, term: inDoc.trim() })
+
+    // Mark the block, then click its gutter marker — the only way the thread modal opens.
+    await preview.send({ type: 'commentsForBlocks', blocks: [{ paragraphIndex: 1, count: 1 }] })
+    await preview.drain()
+    await preview.click('[data-paragraph-index="1"] .bctl-comment')
+    await preview.waitForPost('requestCommentThread')
+    await preview.send({
+      type: 'commentThread',
+      paragraphIndex: 1,
+      threads: [
+        {
+          comments: [
+            { id: 'c1', body: 'Kubernetes should stay untranslated everywhere', createdAt: STAMP, updatedAt: STAMP },
+          ],
+        },
+      ],
+    })
+    expect(await preview.hidden('#comment-modal')).toBe(false)
+
+    const inComment = await preview.dragSelect('#comment-modal .cmt-body')
+    expect(inComment.trim().length).toBeGreaterThan(0) // a real selection exists…
+    expect(await contextOffer(preview)).toEqual({ offered: false, term: '' }) // …and is refused
+
+    expect(preview.errors()).toEqual([])
+  })
+
+  it('refuses the translated column of the bilingual grid, where the mode flag cannot tell', async () => {
+    preview = await openPreview()
+    await preview.configure()
+    await preview.render(SELECT_SOURCE)
+    await showTranslation(preview, SELECT_TARGET)
+    await preview.click('#bilingual-btn')
+    await preview.drain()
+
+    // Both languages are on screen at once, so "is the source displayed?" is the wrong
+    // question — the right cell is the translation and must not seed a source-term list.
+    const right = await preview.dragSelect('.bcell-r [data-paragraph-index="1"]')
+    expect(right.trim().length).toBeGreaterThan(0)
+    expect(await contextOffer(preview)).toEqual({ offered: false, term: '' })
+
+    // The left cell is the source, and is still offered.
+    const left = await preview.dragSelect('.bcell-l [data-paragraph-index="1"]')
+    expect(await contextOffer(preview)).toEqual({ offered: true, term: left.trim() })
+
+    expect(preview.errors()).toEqual([])
+  })
+
   it('leaves the context untouched while a form field owns the selection', async () => {
     preview = await openPreview()
     await preview.configure()
