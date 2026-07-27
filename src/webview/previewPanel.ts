@@ -825,6 +825,20 @@ selAi.addEventListener('click', () => {
   post({ type: 'askAiOpen', paragraphIndex: idx, lastIndex: lastIdx, selection: selectionText, translated })
 })
 
+/** A block's own prose, excluding the gutter control. `.bctl` is a DOM CHILD of the
+ *  block (appended by `drawBlockControls`), so `textContent` would fold the comment-count
+ *  badge into the block's text — characters the user never selected and that do not exist
+ *  in the source, which is what an anchor is matched against. */
+function blockText(el: HTMLElement): string {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT)
+  let out = ''
+  for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+    if (node.parentElement?.closest('.bctl')) continue
+    out += node.nodeValue ?? ''
+  }
+  return out
+}
+
 /** Build a fragment anchor from `rawText` (a selection, or a sub-range of it) within `blockEl`:
  *  the trimmed text plus the block text immediately around it (to disambiguate a repeat).
  *  Undefined when the text trims to nothing (only whitespace/punctuation). */
@@ -837,13 +851,13 @@ function fragmentFromText(blockEl: HTMLElement, rawText: string): FragmentAnchor
   // fragment at block level instead of orphaning it (see FragmentAnchor.translated).
   const translated = bilingual ? blockEl.closest('.bcell-r') !== null : displaying === 'translation'
   const flag = translated ? { translated: true } : undefined
-  const blockText = blockEl.textContent ?? ''
-  const at = blockText.indexOf(trimmed.text)
+  const text = blockText(blockEl)
+  const at = text.indexOf(trimmed.text)
   if (at < 0) return { quote: trimmed.text, prefix: '', suffix: '', ...flag }
   return {
     quote: trimmed.text,
-    prefix: blockText.slice(Math.max(0, at - 24), at),
-    suffix: blockText.slice(at + trimmed.text.length, at + trimmed.text.length + 24),
+    prefix: text.slice(Math.max(0, at - 24), at),
+    suffix: text.slice(at + trimmed.text.length, at + trimmed.text.length + 24),
     ...flag,
   }
 }
@@ -864,9 +878,13 @@ function spanCommentPayload(
   const range = sel.getRangeAt(0)
   const firstBlock = selBlocks[0]
   const lastBlock = selBlocks[selBlocks.length - 1]
-  // Tail of the first block: from the selection start to the end of that block.
+  // Tail of the first block: from the selection start to the end of that block's PROSE.
+  // Not `childNodes.length` — the last child is the injected `.bctl` gutter, whose
+  // comment-count badge would otherwise be appended to the quote.
   const rStart = range.cloneRange()
-  rStart.setEnd(firstBlock, firstBlock.childNodes.length)
+  const firstProse = wholeBlockRange(firstBlock)
+  if (firstProse) rStart.setEnd(firstProse.endContainer, firstProse.endOffset)
+  else rStart.setEnd(firstBlock, firstBlock.childNodes.length)
   const startFragment = fragmentFromText(firstBlock, rStart.toString())
   // Head of the last block: from the start of that block to the selection end.
   const rEnd = range.cloneRange()
