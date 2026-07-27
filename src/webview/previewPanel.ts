@@ -675,6 +675,10 @@ function openAssistantModal(): void {
   assistantInput.value = ''
   assistantApply.hidden = true
   assistantSummary.disabled = true // enabled once the assistant produces its first reply
+  // The dialog opens optimistically, before the host confirms a session. Until
+  // `assistantOpen` arrives there is nothing to send to, and an open that fails
+  // (no provider, no key) never sends it — so Send must start out dead.
+  assistantSend.disabled = true
   aiStreamBubble = undefined
   assistantModal.hidden = false
 }
@@ -684,6 +688,7 @@ function closeAssistantModal(): void {
   assistantModal.hidden = true
   assistantLog.replaceChildren()
   assistantError.textContent = ''
+  assistantSend.disabled = true // the session is gone; the next open re-enables it
   aiStreamBubble = undefined
 }
 
@@ -1110,6 +1115,7 @@ window.addEventListener('message', (event: MessageEvent) => {
       assistantComments.textContent = n > 0 ? `${n} comment${n === 1 ? '' : 's'} considered` : ''
       assistantLog.replaceChildren()
       assistantError.textContent = ''
+      assistantSend.disabled = false // the host confirmed a live session
       aiStreamBubble = undefined
       break
     }
