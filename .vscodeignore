@@ -2,6 +2,10 @@
 .kiro/**
 .ai_docs/**
 .claude/**
+# Local AI tooling that is not tracked in git — it is invisible to `git status`,
+# so nothing but this line stops vsce from shipping it (it was 417 KB of the
+# 0.8.0 package before this rule, more than half the .vsix).
+.superpowers/**
 # Internal AI design/plan artefacts — never part of the shipped extension.
 docs/superpowers/**
 src/**
@@ -14,7 +18,14 @@ node_modules/**
 npm-install.log
 tsconfig.json
 vitest.config.ts
+vitest.e2e.config.ts
 esbuild.mjs
+# End-to-end layers: compiled host tests and their runner config. Dev-only gates,
+# never part of the shipped extension.
+out-e2e/**
+.vscode-test/**
+.vscode-test.mjs
+esbuild.e2e.mjs
 .gitignore
 .vscodeignore
 CLAUDE.md

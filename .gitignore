@@ -1,5 +1,7 @@
 node_modules/
 out/
+out-e2e/
+.vscode-test/
 *.vsix
 coverage/
 *.log
