@@ -29,10 +29,14 @@ export class IdeAssistant implements IAssistantProvider {
       models = await vscode.lm.selectChatModels({ vendor })
     }
     if (!models.length) {
+      // An empty result is ambiguous by design: `selectChatModels` returns [] both
+      // when Copilot is absent AND when it is installed but has not yet granted this
+      // extension access (consent is only prompted from a user-initiated action).
+      // The public API cannot tell them apart, so the message must not pick one.
       throw new TranslatorError(
         'INVALID_ENDPOINT_URL',
         t(
-          'GitHub Copilot models are unavailable. Make sure GitHub Copilot is installed and signed in, then run "Markdown Translator: Test AI Assistant Connection" once (or reload the window) to authorize access.',
+          'No GitHub Copilot chat model is available. Either GitHub Copilot is not installed and signed in, or it has not granted this extension access to its models yet. Run "Markdown Translator: Test AI Assistant Connection" from the Command Palette and approve the access prompt, then try again — or reload the window if access was already granted.',
         ),
       )
     }

@@ -11,8 +11,8 @@ import { t } from '../l10n'
  * - Malformed model output (`SyntaxError` from JSON parsing) →
  *   `Failed to parse AI response` (req 17.6).
  * - Provider-availability / missing-key errors are already fully worded at the
- *   throw site (`API key required for {0}` 17.2, the Copilot 17.3 and Kiro 17.4
- *   strings) and pass through unchanged — never re-wrapped (no double `t()`).
+ *   throw site (`API key required for {0}` 17.2 and the Copilot-unavailable 17.3
+ *   string) and pass through unchanged — never re-wrapped (no double `t()`).
  */
 export function assistantErrorMessage(err: unknown): string {
   if (err instanceof TranslatorError) {

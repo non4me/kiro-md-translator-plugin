@@ -1,5 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest'
 import { IdeAssistant } from '../src/assistant/IdeAssistant'
+import { assistantErrorMessage } from '../src/assistant/errors'
+import type { TranslatorError } from '../src/types'
 import { __setLmModels, type MockLmModel } from './mocks/vscode'
 
 function model(vendor: string, family: string, reply: string): MockLmModel {
@@ -46,11 +48,30 @@ describe('IdeAssistant', () => {
     expect(await collect(new IdeAssistant('vscode-copilot', 'no-such-family'))).toBe('GPT')
   })
 
-  it('throws an actionable Copilot-unavailable message when no copilot model exists (req 17.3)', async () => {
+  it('names BOTH causes when no copilot model exists — not-installed and not-authorized (req 17.3)', async () => {
     __setLmModels([model('openrouter', 'grok', 'x')]) // a model exists, but not from Copilot
     const p = new IdeAssistant('vscode-copilot', 'claude-sonnet-4.5')
-    await expect(p.testConnection()).rejects.toThrow(
-      'GitHub Copilot models are unavailable. Make sure GitHub Copilot is installed and signed in, then run "Markdown Translator: Test AI Assistant Connection" once (or reload the window) to authorize access.',
+    const err = await p.testConnection().then(
+      () => undefined,
+      (e: Error) => e,
     )
+    const msg = err?.message ?? ''
+    // The two causes are indistinguishable through the public API, so the message
+    // must offer both rather than asserting the wrong one (it used to lead with
+    // "make sure Copilot is installed" at users who had it installed all along).
+    expect(msg).toContain('not installed and signed in')
+    expect(msg).toContain('has not granted this extension access')
+    // The remedy names a real command title, verbatim from package.json.
+    expect(msg).toContain('Markdown Translator: Test AI Assistant Connection')
+  })
+
+  it('reports the Copilot-unavailable message verbatim, never re-wrapped as a connection failure', async () => {
+    __setLmModels([])
+    const p = new IdeAssistant('vscode-copilot', undefined)
+    const err = (await p.testConnection().catch((e: Error) => e)) as TranslatorError
+    // `INVALID_ENDPOINT_URL` is load-bearing: errors.ts passes it through its
+    // default branch untouched. Any other code would prefix "Connection failed:".
+    expect(err.code).toBe('INVALID_ENDPOINT_URL')
+    expect(assistantErrorMessage(err)).toBe(err.message)
   })
 })
