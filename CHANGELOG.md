@@ -3,6 +3,77 @@
 All notable changes to this project are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/).
 
+## [0.8.0] — 2026-07-27
+
+Feature release: an AI assistant you can ask about any part of the document — explain it, discuss
+it, have it rewrite a fragment, or keep the conversation as a comment.
+
+### Added
+
+- **Ask AI about a selection.** Select text — a word, a paragraph, or a span across several blocks —
+  and the selection toolbar now offers **Ask AI** next to Edit and Comment. It opens a chat over the
+  document: the assistant is given the fragment, the source of the blocks it touches, the headings
+  above it, the document itself and the comments already on that block, and answers as it types. A
+  document too large to send whole is trimmed to the selection and its context rather than refused.
+  Closing the dialog discards the conversation — nothing is stored.
+- **Turn a reply into an edit.** When the assistant proposes a replacement for the selected text, an
+  **Apply Changes** button appears. It opens the usual paragraph-edit dialog pre-filled with the
+  suggestion in the file's storage language, so you review and save it yourself — nothing is written
+  behind your back — and the chat stays open so you can keep iterating.
+- **Save a conversation as a comment.** **Save Summary** asks the assistant to condense the
+  discussion into a short note and stores it as a comment on the selected block, using whichever
+  comment store you have chosen (separate file, inside the Markdown, or draft).
+- **Five assistant providers.** A local **Ollama** model (offline, keyless), **OpenAI**,
+  **Anthropic**, **Google Gemini**, and **GitHub Copilot Chat** inside VS Code — Copilot needs no key
+  and no endpoint. With no explicit choice, VS Code uses GitHub Copilot Chat and every other editor
+  falls back to Ollama. When both the assistant and translation are set to Ollama, the assistant
+  reuses the translation endpoint and model, so you configure Ollama once.
+- **AI Assistant settings section.** A new section holds the on/off switch — the assistant is **off
+  by default**, and no chat request is ever sent while it is off — plus provider, model, Ollama
+  endpoint and a custom system prompt, with **Set key** and **Test connection** links for each
+  provider that needs a key. Keys live in the OS keychain, stored separately from the translation
+  keys. The same two actions are in the Command Palette as **"Markdown Translator: Set AI Assistant
+  API Key"** and **"Markdown Translator: Test AI Assistant Connection"**. The provider description
+  spells out the trade-off: with a hosted provider the document and its comments leave your machine
+  on every turn, while Ollama and GitHub Copilot Chat do not send it to a third-party API.
+
+### Changed
+
+- **The selection toolbar now has three actions** — Edit, Comment and Ask AI. Ask AI appears only
+  while the AI Assistant is enabled in settings, so nothing changes if you do not use it.
+
+### Fixed
+
+- **A comment on a phrase no longer disappears when made on the translated view.** Commenting a
+  fragment while the preview showed the translation captured the translated wording, which does not
+  exist in the stored file, so the comment was orphaned the instant it was saved. Such a comment is
+  now anchored to its block instead. (A fragment whose source text really was deleted still shows up
+  under Outdated comments, as before.)
+- **An honest message when GitHub Copilot is not available.** Instead of a generic failure, the
+  assistant now says no Copilot chat model is available and names both causes — Copilot is not
+  installed and signed in, or it has not granted this extension access yet — and tells you to run
+  "Markdown Translator: Test AI Assistant Connection" once and approve the prompt, or reload the
+  window if access was already granted. If your account simply lacks the default model family,
+  another Copilot model is used rather than reporting Copilot as missing.
+- **Save Summary no longer writes the summary into the chat.** Generating the summary streamed its
+  text into the conversation as if it were another reply; it now goes straight to the comment.
+- **Send is dead until the chat is really open.** If opening the dialog failed — no provider
+  configured, a missing key, an unreachable server — the Send button stayed clickable but did
+  nothing. It is now disabled until the host confirms a session, so the error message is the only
+  thing left to act on.
+- **One name per assistant provider.** The settings page, the key prompt, the connection-test
+  notification and the error messages called the same provider by different names; they now all use
+  the same label.
+- **A phrase comment stays on its phrase after a restart.** Comments were saved with the exact text
+  they highlight, but that detail was thrown away when the store was read back — so on the next time
+  the file was opened, a comment on a phrase spread to the whole paragraph, and a comment spanning
+  several blocks collapsed onto the first one. Both now survive. Comments saved by earlier versions
+  recover on their own: the information was always on disk, only the reading was lossy.
+- **The comment counter no longer leaks into comments and search.** On a block that already had a
+  comment, the small count badge in the margin was treated as part of the text: commenting across
+  several blocks captured the digit into the saved quote, and searching for that digit reported a
+  match on the badge.
+
 ## [0.7.0] — 2026-07-13
 
 Large feature release: fragment & multi-block comments, code syntax highlighting,

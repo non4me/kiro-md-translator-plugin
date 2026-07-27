@@ -48,7 +48,7 @@ The real `vscode` API only exists inside the extension host at runtime. Two sepa
 
 **Cache key.** `TranslationCache` keys on `JSON.stringify([text, lang])`, never `text + '::' + lang` (that collides). `lang` is the *target of that particular translation* — `targetLang` forward, `storageLang` for reverse.
 
-**UI strings (req 8).** All user-facing text goes through `t()` in `src/l10n.ts`, which delegates to `vscode.l10n.t` at runtime and falls back to manual `{0}`/`{1}` substitution when the API is absent (unit tests). Source strings are the reference catalog; per-locale bundles in `l10n/` override them. Don't hard-code display strings — wrap them in `t()`.
+**UI strings (req 8 — withdrawn).** The UI is English-only: there is no `l10n/` directory, no `"l10n"` key in `package.json`, and no catalog (the ru/en bundles were removed in 0.2.0). Host-side user-facing text still goes through `t()` in `src/l10n.ts`, which delegates to `vscode.l10n.t` at runtime and falls back to manual `{0}`/`{1}` substitution when the API is absent (unit tests) — it is a formatting funnel, so a future catalog would need no call-site change. The English literal at the call site is what the user sees. Don't build display strings by concatenation — wrap them in `t()` with `{0}` placeholders. Webview code has no `t()`; its strings are plain literals.
 
 ## Build specifics
 
