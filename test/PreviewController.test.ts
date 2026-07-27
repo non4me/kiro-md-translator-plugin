@@ -103,6 +103,20 @@ describe('PreviewController reverse translation (req 7.3/7.4)', () => {
     // The fence delimiters are consumed by the parser — never shown as literal text.
     expect(tip?.html).not.toContain('```')
   })
+
+  // Same promise (req 7.15), the other block kind that is not valid markdown on its own:
+  // a table row cut out of its table has lost the separator line that made it a table, so
+  // it used to render as a paragraph of literal pipes.
+  it('renders a table-row peek as a real table, not a line of literal pipes', async () => {
+    const row = '| build | compiles the project |'
+    const { controller, posted } = setup()
+    controller.primeRenderState(row, [{ paragraphIndex: 0, startLine: 0, endLine: 0 }], true)
+    await controller.handleHover(0)
+    const tip = posted.find((m) => m.type === 'showTooltip') as { html: string } | undefined
+    expect(tip?.html).toMatch(/<table[^>]*>/)
+    expect(tip?.html).toContain('compiles the project')
+    expect(tip?.html).not.toContain('| build |') // no raw scaffolding on screen
+  })
 })
 
 describe('PreviewController display-mode toggle (Translate <-> Original)', () => {

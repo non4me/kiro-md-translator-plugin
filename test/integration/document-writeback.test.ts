@@ -487,6 +487,29 @@ describe('J5: export writes {name}.{lang}.md (req 6.2/6.3/6.5/6.6, 11.12)', () =
     controller.dispose()
   })
 
+  // README: "A Target language must be set; without one the command says so instead of
+  // doing nothing." Returning quietly made the palette command indistinguishable from a
+  // broken one — no dialog, no file, no message at all.
+  it('says what is missing instead of silently doing nothing without a Target language', async () => {
+    const dialog = vi.spyOn(vscode.window, 'showSaveDialog')
+    const warn = vi.spyOn(vscode.window, 'showWarningMessage')
+    const noTarget = { ...CONFIG, targetLanguage: undefined }
+    const { controller } = harness(EXPORT_SOURCE, {
+      exportService: new ExportService() as never,
+      settings: { getConfig: () => noTarget, onDidChangeSettings: () => ({ dispose() {} }) } as never,
+      // The wiring ActivationController installs: PreviewDeps.notify → a warning toast.
+      notify: (m: string) => void vscode.window.showWarningMessage(m),
+    })
+
+    controller.onWebviewMessage({ type: 'saveTranslation' })
+    await vi.waitFor(() => expect(warn).toHaveBeenCalled())
+
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/target language/i))
+    expect(dialog).not.toHaveBeenCalled() // nothing to save, so no dialog is offered
+    expect(vscode.__listFiles()).not.toContain('file:///docs/readme..md')
+    controller.dispose()
+  })
+
   it('cancelling the save dialog writes nothing and notifies nothing (req 6.6)', async () => {
     const dialog = vi.spyOn(vscode.window, 'showSaveDialog').mockResolvedValue(undefined)
     const info = vi.spyOn(vscode.window, 'showInformationMessage')

@@ -91,9 +91,12 @@ export class SettingsManager implements ISettingsManager {
    * sentinel and is overridden here at read time.
    */
   private getAiAssistantProvider(c: vscode.WorkspaceConfiguration): AssistantProviderType {
-    const inspected = c.inspect<AssistantProviderType>('aiAssistant.provider')
+    const inspected = c.inspect<AssistantProviderType | 'auto'>('aiAssistant.provider')
     const explicit = inspected?.workspaceFolderValue ?? inspected?.workspaceValue ?? inspected?.globalValue
-    if (explicit) return explicit
+    // `auto` is the manifest default and means exactly "no explicit choice" — it is a real
+    // enum value so the settings page can show the automatic behaviour instead of
+    // advertising a provider (`ollama`) that VS Code users never actually get.
+    if (explicit && explicit !== 'auto') return explicit
     const isVsCode = /visual studio code/i.test(vscode.env.appName ?? '')
     return isVsCode ? 'vscode-copilot' : 'ollama'
   }

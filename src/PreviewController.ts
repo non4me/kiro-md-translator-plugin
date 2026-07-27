@@ -28,6 +28,20 @@ const MEMORY_CHECK_INTERVAL_MS = 10_000
 const LARGE_FILE_BYTES = 1024 * 1024 // 1 MB
 const MEMORY_WARN_BYTES = 150 * 1024 * 1024 // 150 MB (req 5.6, margin above the 100 MB budget)
 
+/** A GFM table row on its own. Cut out of its table it is no longer a table — the
+ *  separator line is what makes one — so remark renders it as a paragraph of literal
+ *  `| pipes |`. */
+const LONE_TABLE_ROW = /^\s*\|.*\|\s*$/
+
+/** What a hover peek should be PARSED as. A single block's source is normally valid
+ *  markdown on its own; a table row is the exception, so it is given back the separator
+ *  line it lost, and the peek renders a real one-row table instead of raw pipes (req 7.15). */
+function tooltipSource(markdown: string): string {
+  if (!LONE_TABLE_ROW.test(markdown)) return markdown
+  const cols = (markdown.match(/(?<!\\)\|/g)?.length ?? 1) - 1
+  return cols >= 1 ? `${markdown}\n|${' --- |'.repeat(cols)}` : markdown
+}
+
 export interface PreviewDeps {
   post: (message: ExtensionMessage) => void
   renderer: MarkdownRenderer
@@ -50,6 +64,9 @@ export interface PreviewDeps {
   applyEdit?: (newText: string) => Promise<boolean>
   /** Run a VS Code command (Edit_Mode opens the source editor via `vscode.openWith`). */
   executeCommand?: (command: string, ...args: unknown[]) => Thenable<unknown>
+  /** Surface a message to the user as an IDE notification. Used where a command
+   *  would otherwise do nothing visible and read as broken. */
+  notify?: (message: string) => void
   /** Plugin-owned memory size in bytes (injected for the monitor, req 5.1/5.6). */
   ownedMemoryBytes?: () => number
   /** Resolves once the API key has finished loading from the keychain; the
@@ -500,7 +517,7 @@ export class PreviewController implements IPreviewController {
    *  preserved, ``` delimiters gone) instead of collapsed one-line text. The peek is
    *  a single block's source/translation, so this is one small parse — no API call. */
   private async tooltipHtml(markdown: string): Promise<string> {
-    const { html } = await this.deps.renderer.render(markdown, this.fileDir())
+    const { html } = await this.deps.renderer.render(tooltipSource(markdown), this.fileDir())
     return html
   }
 
@@ -592,7 +609,13 @@ export class PreviewController implements IPreviewController {
 
   private async handleExport(): Promise<void> {
     const cfg = this.deps.settings.getConfig()
-    if (!cfg.targetLanguage) return
+    if (!cfg.targetLanguage) {
+      // Returning quietly here made "Save Translation" indistinguishable from a broken
+      // command: no dialog, no file, no message. Every other missing-setting path in the
+      // product says what is missing (req 3.20's settings hint, req 6.4's export report).
+      this.deps.notify?.(t('Set a Target language in settings before saving a translation.'))
+      return
+    }
     const ac = new AbortController()
     // Export must produce a CLEAN translated file: inline comment carriers
     // (<!-- rmt:comments … -->) are stripped before translating so they never

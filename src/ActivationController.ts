@@ -597,6 +597,7 @@ export class ActivationController implements IActivationController, vscode.Custo
       getDocumentUri: () => document.uri,
       applyEdit,
       executeCommand: (command, ...args) => vscode.commands.executeCommand(command, ...args),
+      notify: (message) => void vscode.window.showWarningMessage(message),
       whenReady: () => this.ready,
       hasApiKey: () => (this.apiKey ?? '').trim().length > 0,
       commentsEnabled: () => this.settings.getCommentsEnabled(),

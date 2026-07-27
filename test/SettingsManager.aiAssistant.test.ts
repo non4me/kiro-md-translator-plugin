@@ -52,4 +52,15 @@ describe('SettingsManager — AI Assistant', () => {
     const cfg = new SettingsManager().getAiAssistantConfig()
     expect(cfg.provider).toBe('openai')
   })
+
+  // 'auto' is the manifest default and a real enum value, so the settings page can show
+  // the automatic behaviour rather than advertising a provider VS Code users never get.
+  // Reading it back must mean "no explicit choice", not a sixth provider.
+  it('treats an explicitly stored "auto" as no choice at all', () => {
+    ;(vscode as any).__setConfig('kiro-md-translator', 'aiAssistant.provider', 'auto')
+    ;(vscode as any).__setAppName('Visual Studio Code')
+    expect(new SettingsManager().getAiAssistantConfig().provider).toBe('vscode-copilot')
+    ;(vscode as any).__setAppName('Kiro')
+    expect(new SettingsManager().getAiAssistantConfig().provider).toBe('ollama')
+  })
 })

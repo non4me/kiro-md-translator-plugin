@@ -43,12 +43,31 @@ describe('E11: SettingsManager on the live configuration service', () => {
     )
   })
 
-  it('overrides the manifest default with the host-aware one when nothing is set', () => {
-    // The manifest default is a "no explicit value" sentinel; the effective value is
-    // decided at read time. The two must genuinely differ, or this proves nothing.
-    assert.equal(cfg().inspect('aiAssistant.provider')?.defaultValue, 'ollama')
+  it('resolves the manifest default `auto` to the host-aware provider', () => {
+    // `auto` is a declared enum value whose whole meaning is "no explicit choice", so the
+    // settings page shows the automatic behaviour instead of naming a provider this host
+    // would never actually use. It must never escape SettingsManager: the factory, the
+    // keychain namespaces and the toast labels all know only real providers.
+    assert.equal(cfg().inspect('aiAssistant.provider')?.defaultValue, 'auto')
+    assert.ok(
+      (cfg().inspect('aiAssistant.provider') as { defaultValue?: string }).defaultValue !==
+        settings.getAiAssistantConfig().provider,
+      'the resolved provider must differ from the sentinel, or this proves nothing',
+    )
     assert.equal(settings.getAiAssistantConfig().provider, documentedDefaultProvider())
-    assert.notEqual(documentedDefaultProvider(), 'ollama')
+    assert.notEqual(settings.getAiAssistantConfig().provider, 'auto')
+  })
+
+  it('treats an explicitly stored `auto` as no choice at all', async () => {
+    // Someone can select `auto` in the settings UI, which writes it to settings.json.
+    // Reading it back must mean the same as an unset value, not a sixth provider.
+    try {
+      await cfg().update('aiAssistant.provider', 'auto', vscode.ConfigurationTarget.Workspace)
+      assert.equal(cfg().inspect('aiAssistant.provider')?.workspaceValue, 'auto')
+      assert.equal(settings.getAiAssistantConfig().provider, documentedDefaultProvider())
+    } finally {
+      await cfg().update('aiAssistant.provider', undefined, vscode.ConfigurationTarget.Workspace)
+    }
   })
 
   it('lets an explicit workspace value win, and falls back again when it is cleared', async () => {
