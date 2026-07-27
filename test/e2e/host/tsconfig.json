@@ -1,0 +1,18 @@
+{
+  // Typecheck seam for the extension-host e2e layer ONLY.
+  //
+  // The root tsconfig excludes `test` on purpose so tsc never sees the vitest
+  // `vscode` mock's deliberate type divergence — do not widen it. This sibling
+  // config includes only this directory, so the mock stays invisible while these
+  // files are checked against the REAL @types/vscode, which is the whole point:
+  // unlike the vitest suite, this layer talks to the real host API.
+  "extends": "../../../tsconfig.json",
+  "compilerOptions": {
+    "types": ["node", "vscode", "mocha"],
+    "noEmit": true
+  },
+  "include": ["**/*.ts"],
+  // The inherited `exclude` is resolved against the ROOT config's directory and
+  // lists `test`, which would exclude every file here. Clear it.
+  "exclude": []
+}
